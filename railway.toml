@@ -1,8 +1,6 @@
 [build]
-builder = "nixpacks"
-buildCommand = "pip3 install -r requirements.txt && npm install && npm run build"
+builder = "dockerfile"
 
 [deploy]
 startCommand = "python run.py"
-healthcheckPath = "/api/auth/me"
 restartPolicyType = "on_failure"
