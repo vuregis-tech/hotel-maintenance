@@ -1,0 +1,105 @@
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+from .database import Base, engine
+from .models import User, MainArea, SubArea, IssueType
+from .auth import hash_password
+from .database import SessionLocal
+from .routers import auth, users, jobs, reports, areas, issue_types
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def seed_data():
+    db = SessionLocal()
+    try:
+        # Seed admin user
+        if not db.query(User).filter(User.username == "admin").first():
+            admin = User(
+                username="admin",
+                password_hash=hash_password("admin1234"),
+                full_name="ผู้ดูแลระบบ",
+                department="IT",
+                position="System Administrator",
+                role="admin",
+            )
+            db.add(admin)
+            logger.info("Created default admin: admin / admin1234")
+
+        # Seed default main areas
+        if db.query(MainArea).count() == 0:
+            areas_data = [
+                ("ห้องพัก", ["ชั้น 1", "ชั้น 2", "ชั้น 3", "ชั้น 4", "ชั้น 5"]),
+                ("ล็อบบี้", ["ส่วนต้อนรับ", "โถงทางเดิน", "ลิฟต์"]),
+                ("ร้านอาหาร", ["ห้องอาหารหลัก", "ครัว", "บาร์"]),
+                ("สระว่ายน้ำ", ["สระผู้ใหญ่", "สระเด็ก", "ห้องเปลี่ยนเสื้อผ้า"]),
+                ("ฟิตเนส", ["ห้องออกกำลังกาย", "ห้องอบไอน้ำ"]),
+                ("주차场", ["ชั้น B1", "ชั้น B2"]),
+                ("พื้นที่ส่วนกลาง", ["ห้องประชุม", "ห้องอเนกประสงค์", "ห้องน้ำสาธารณะ"]),
+                ("พื้นที่หลังบ้าน", ["ห้องซักรีด", "ห้องเก็บของ", "ห้องเครื่อง"]),
+            ]
+            for area_name, subs in areas_data:
+                area = MainArea(name=area_name)
+                db.add(area)
+                db.flush()
+                for sub_name in subs:
+                    db.add(SubArea(name=sub_name, main_area_id=area.id))
+            logger.info("Seeded default areas")
+
+        # Seed default issue types
+        if db.query(IssueType).count() == 0:
+            issue_names = [
+                "ไฟฟ้า/แสงสว่าง",
+                "ประปา/น้ำรั่ว",
+                "เครื่องปรับอากาศ",
+                "เฟอร์นิเจอร์/อุปกรณ์",
+                "ประตู/หน้าต่าง/กุญแจ",
+                "โทรทัศน์/รีโมท",
+                "ตู้เย็น/ไมโครเวฟ",
+                "ระบบอินเทอร์เน็ต",
+                "ระบบโทรศัพท์",
+                "ระบบสุขาภิบาล",
+                "ลิฟต์/บันได",
+                "ทั่วไป",
+            ]
+            for name in issue_names:
+                db.add(IssueType(name=name))
+            logger.info("Seeded default issue types")
+
+        db.commit()
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    seed_data()
+    yield
+
+
+app = FastAPI(title="Hotel Maintenance System", version="2.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(jobs.router)
+app.include_router(reports.router)
+app.include_router(areas.router)
+app.include_router(issue_types.router)
+
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

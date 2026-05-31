@@ -1,0 +1,20 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Database (Railway จะสร้างใหม่)
+hotel_maintenance.db
+
+# Node
+node_modules/
+dist/
+
+# Uploads (local only)
+uploads/
+
+# OS
+.DS_Store
+*.log
