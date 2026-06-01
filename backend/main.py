@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 import os
 
 from .database import Base, engine
@@ -102,10 +103,23 @@ app.include_router(issue_types.router)
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("frontend", exist_ok=True)
+
+# log path ให้รู้ว่า app รันจากไหน
+logger.info(f"CWD: {os.getcwd()}")
+logger.info(f"frontend/index.html exists: {os.path.exists('frontend/index.html')}")
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# serve frontend — ต้องมี index.html
-if os.path.exists("frontend/index.html"):
-    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
-else:
-    logger.warning("frontend/index.html not found — static files not served")
+
+# ── SPA fallback: ทุก route ที่ไม่ใช่ /api/ และ /uploads/ → serve index.html ──
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    # ถ้าเป็น static asset (js, css, images) ให้หาไฟล์จริง
+    file_path = os.path.join("frontend", full_path)
+    if full_path and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    # ทุก route อื่น → index.html (React Router จัดการเอง)
+    index = "frontend/index.html"
+    if os.path.isfile(index):
+        return FileResponse(index)
+    return JSONResponse({"error": "frontend not built", "cwd": os.getcwd()}, status_code=503)
