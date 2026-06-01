@@ -1,5 +1,14 @@
 const BASE = ''  // use Vite proxy — /api/* and /uploads/* are proxied to backend
 
+// แปลง filename/URL จาก DB → URL ที่แสดงใน browser
+// รองรับ: Cloudinary URL (https://...), local path (/uploads/xxx), filename เก่า (xxx.jpg)
+export function imgUrl(filename) {
+  if (!filename) return ''
+  if (filename.startsWith('http')) return filename          // Cloudinary URL
+  if (filename.startsWith('/')) return filename             // /uploads/xxx
+  return `/uploads/${filename}`                             // legacy filename
+}
+
 function getToken() {
   return localStorage.getItem('token')
 }

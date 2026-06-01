@@ -15,6 +15,11 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./hotel_maintenance.db"
 
+    # Cloudinary — เก็บรูปภาพถาวร
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     DAILY_REPORT_TIME: str = "08:00"
     WEEKLY_REPORT_DAY: int = 0
     MONTHLY_REPORT_DAY: int = 1

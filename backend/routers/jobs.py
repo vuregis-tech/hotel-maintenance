@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime, timedelta
-import os, uuid, aiofiles
+import os, uuid
 
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
@@ -12,6 +12,7 @@ from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
 from ..schemas import (RequestCreate, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody)
 from ..auth import get_current_user, require_roles
+from ..services.storage import upload_image as storage_upload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
@@ -30,11 +31,8 @@ def add_history(db, request_id, old_status, new_status, user_id, note=None):
 
 
 def save_upload(file_bytes, ext):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOAD_DIR, filename), "wb") as f:
-        f.write(file_bytes)
-    return filename
+    """อัปโหลดรูป → คืน URL (Cloudinary หรือ local path)"""
+    return storage_upload(file_bytes, folder="hotel-maintenance")
 
 
 def get_req(db, job_id):

@@ -94,7 +94,8 @@ class IssueTypeCreate(BaseModel):
 # ── Request Images ────────────────────────────────────
 class RequestImageOut(BaseModel):
     id: int
-    filename: str
+    filename: str   # URL (Cloudinary) หรือ path (/uploads/xxx)
+    url: Optional[str] = None   # computed in validator
     uploaded_at: datetime
 
     class Config:

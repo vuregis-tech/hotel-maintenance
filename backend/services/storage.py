@@ -1,0 +1,76 @@
+"""
+Image storage service — Cloudinary (production) หรือ local (fallback)
+"""
+import os
+import logging
+import cloudinary
+import cloudinary.uploader
+from ..config import get_settings
+
+logger = logging.getLogger(__name__)
+_configured = False
+
+
+def _configure():
+    global _configured
+    if _configured:
+        return
+    s = get_settings()
+    if s.CLOUDINARY_CLOUD_NAME and s.CLOUDINARY_API_KEY and s.CLOUDINARY_API_SECRET:
+        cloudinary.config(
+            cloud_name=s.CLOUDINARY_CLOUD_NAME,
+            api_key=s.CLOUDINARY_API_KEY,
+            api_secret=s.CLOUDINARY_API_SECRET,
+            secure=True,
+        )
+        _configured = True
+        logger.info("Cloudinary configured ✓")
+    else:
+        logger.warning("Cloudinary not configured — using local storage")
+
+
+def is_cloudinary_enabled() -> bool:
+    _configure()
+    return _configured
+
+
+def upload_image(file_bytes: bytes, folder: str = "hotel-maintenance") -> str:
+    """
+    อัปโหลดรูป → คืน URL ที่เข้าถึงได้
+    - ถ้ามี Cloudinary → อัปโหลดขึ้น cloud, คืน https://res.cloudinary.com/...
+    - ถ้าไม่มี → บันทึก local, คืน /uploads/filename
+    """
+    _configure()
+
+    if _configured:
+        try:
+            result = cloudinary.uploader.upload(
+                file_bytes,
+                folder=folder,
+                resource_type="image",
+                quality="auto",
+                fetch_format="auto",
+            )
+            url = result["secure_url"]
+            logger.info(f"Uploaded to Cloudinary: {url}")
+            return url
+        except Exception as e:
+            logger.error(f"Cloudinary upload failed: {e} — falling back to local")
+
+    # Fallback: local storage
+    import uuid
+    os.makedirs("uploads", exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.jpg"
+    path = os.path.join("uploads", filename)
+    with open(path, "wb") as f:
+        f.write(file_bytes)
+    return f"/uploads/{filename}"
+
+
+def get_image_url(stored: str) -> str:
+    """แปลง stored value → URL ที่แสดงใน browser"""
+    if stored.startswith("http"):
+        return stored          # Cloudinary URL — ใช้ได้เลย
+    if stored.startswith("/"):
+        return stored          # local path — ใช้ได้เลย
+    return f"/uploads/{stored}"  # legacy filename only

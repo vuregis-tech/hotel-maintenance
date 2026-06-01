@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, imgUrl } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import StatusBadge from '../components/common/StatusBadge'
 import toast from 'react-hot-toast'
@@ -372,8 +372,8 @@ export default function RequestDetailPage() {
             <p className="text-sm text-gray-500 mb-2">รูปถ่าย</p>
             <div className="grid grid-cols-4 gap-2">
               {job.images.map(img => (
-                <a key={img.id} href={`${BASE}/uploads/${img.filename}`} target="_blank" rel="noopener noreferrer">
-                  <img src={`${BASE}/uploads/${img.filename}`} alt=""
+                <a key={img.id} href={imgUrl(img.filename)} target="_blank" rel="noopener noreferrer">
+                  <img src={imgUrl(img.filename)} alt=""
                     className="w-full aspect-square object-cover rounded-lg hover:opacity-90" />
                 </a>
               ))}
