@@ -10,7 +10,10 @@ from .database import Base, engine
 from .models import User, MainArea, SubArea, IssueType
 from .auth import hash_password
 from .database import SessionLocal
+from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
+
+settings = get_settings()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
