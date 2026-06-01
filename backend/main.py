@@ -101,5 +101,11 @@ app.include_router(areas.router)
 app.include_router(issue_types.router)
 
 os.makedirs("uploads", exist_ok=True)
+os.makedirs("frontend", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+
+# serve frontend — ต้องมี index.html
+if os.path.exists("frontend/index.html"):
+    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+else:
+    logger.warning("frontend/index.html not found — static files not served")

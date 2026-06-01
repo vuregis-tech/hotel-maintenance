@@ -12,12 +12,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Install Node deps & build frontend
+# Install Node deps
 COPY package*.json ./
 RUN npm ci
 
+# Copy source & build frontend
 COPY . .
 RUN npm run build
+
+# ตรวจสอบว่า build สำเร็จ — ถ้าไม่มี index.html จะ error ทันที
+RUN test -f frontend/index.html || (echo "ERROR: frontend build failed!" && exit 1)
+
+# สร้างโฟลเดอร์ uploads (เก็บรูปภาพ)
+RUN mkdir -p uploads
 
 EXPOSE 8000
 
