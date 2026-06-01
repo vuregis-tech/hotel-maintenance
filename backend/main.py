@@ -83,7 +83,8 @@ def seed_data():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_url = settings.DATABASE_URL
-    logger.info(f"Connecting to: {'PostgreSQL' if 'postgresql' in db_url else 'SQLite'}")
+    is_pg = "postgresql" in db_url or db_url.startswith("postgres://")
+    logger.info(f"Connecting to: {'PostgreSQL' if is_pg else 'SQLite'}")
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created ✓")
@@ -115,11 +116,13 @@ app.include_router(issue_types.router)
 @app.get("/api/db-info")
 def db_info():
     """Debug endpoint — ดูว่าใช้ database อะไร"""
-    url = settings.DATABASE_URL
-    db_type = "PostgreSQL ✅" if url.startswith("postgresql") else "SQLite ❌ (ข้อมูลหายตอน deploy)"
+    raw_url = settings.DATABASE_URL
+    is_pg = "postgresql" in raw_url or raw_url.startswith("postgres://")
+    db_type = "PostgreSQL ✅" if is_pg else "SQLite ❌ (ข้อมูลหายตอน deploy)"
     return {
         "database_type": db_type,
-        "host": url.split("@")[1].split("/")[0] if "@" in url else "local",
+        "raw_scheme": raw_url.split("://")[0] if "://" in raw_url else "unknown",
+        "host": raw_url.split("@")[1].split("/")[0] if "@" in raw_url else "local",
         "cwd": os.getcwd(),
         "frontend_ready": os.path.exists("frontend/index.html"),
     }

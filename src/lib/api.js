@@ -25,7 +25,7 @@ async function request(method, path, body, isFormData = false) {
     body: isFormData ? body : body ? JSON.stringify(body) : undefined,
   })
 
-  if (res.status === 401) {
+  if (res.status === 401 && path !== '/api/auth/login') {
     localStorage.removeItem('token')
     window.location.href = '/login'
     throw new Error('Unauthorized')
