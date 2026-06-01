@@ -8,10 +8,22 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import {
   ArrowLeft, Wrench, CheckCircle, XCircle, Plus, Trash2,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff
 } from 'lucide-react'
 
 const BASE = ''
+
+function SafeImage({ src, className }) {
+  const [broken, setBroken] = useState(false)
+  if (broken) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-100`}>
+        <ImageOff className="w-6 h-6 text-gray-300" />
+      </div>
+    )
+  }
+  return <img src={src} alt="" className={className} onError={() => setBroken(true)} />
+}
 
 function InfoRow({ label, value, pre }) {
   if (!value && value !== 0) return null
@@ -291,12 +303,16 @@ export default function RequestDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg font-bold text-gray-900">{job.request_number}</h1>
-            {job.is_urgent && <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">ด่วน</span>}
+            {job.is_urgent && (
+              <span className="text-sm px-3 py-1 bg-red-600 text-white rounded-full font-bold tracking-wide shadow-sm">
+                🚨 ด่วน
+              </span>
+            )}
             {job.guest_inhouse && <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">มีแขก In House</span>}
             <StatusBadge status={job.status} />
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {job.reported_at ? format(new Date(job.reported_at), 'd MMMM yyyy HH:mm', { locale: th }) : ''}
+          <p className="text-sm text-gray-600 font-medium mt-1">
+            {job.reported_at ? format(new Date(job.reported_at), 'd MMMM yyyy เวลา HH:mm น.', { locale: th }) : ''}
           </p>
         </div>
       </div>
@@ -360,7 +376,8 @@ export default function RequestDetailPage() {
       {/* Request Info */}
       <Section title="ข้อมูลการแจ้งซ่อม">
         <div className="space-y-2.5">
-          <InfoRow label="ผู้แจ้ง" value={`${job.reporter?.full_name} (${job.reporter?.position} · ${job.reporter?.department})`} />
+          <InfoRow label="ผู้แจ้ง" value={`${job.reporter?.full_name} (${job.reporter?.position})`} />
+          <InfoRow label="วันที่แจ้ง" value={job.reported_at ? format(new Date(job.reported_at), 'd MMMM yyyy เวลา HH:mm น.', { locale: th }) : ''} />
           <InfoRow label="พื้นที่" value={
             job.main_area ? `${job.main_area.name}${job.sub_area ? ` › ${job.sub_area.name}` : ''}` : job.other_location || '-'
           } />
@@ -372,9 +389,10 @@ export default function RequestDetailPage() {
             <p className="text-sm text-gray-500 mb-2">รูปถ่าย</p>
             <div className="grid grid-cols-4 gap-2">
               {job.images.map(img => (
-                <a key={img.id} href={imgUrl(img.filename)} target="_blank" rel="noopener noreferrer">
-                  <img src={imgUrl(img.filename)} alt=""
-                    className="w-full aspect-square object-cover rounded-lg hover:opacity-90" />
+                <a key={img.id} href={imgUrl(img.filename)} target="_blank" rel="noopener noreferrer"
+                  className="block rounded-lg overflow-hidden">
+                  <SafeImage src={imgUrl(img.filename)}
+                    className="w-full aspect-square object-cover hover:opacity-90 rounded-lg" />
                 </a>
               ))}
             </div>
