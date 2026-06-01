@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import toast from 'react-hot-toast'
-import { Upload, X, AlertTriangle, Users, MapPin, Wrench, FileText } from 'lucide-react'
+import { Upload, X, AlertTriangle, Users, MapPin, Wrench, FileText, Camera, Image } from 'lucide-react'
 
 // ✅ ต้องนิยาม Section ข้างนอก component หลัก
 // ถ้านิยามข้างใน → React จะสร้าง component ใหม่ทุก render → focus หาย
@@ -220,11 +220,42 @@ export default function NewRequestPage() {
                 ))}
               </div>
             )}
-            <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg py-4 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
-              <Upload className="w-5 h-5 text-gray-400" />
-              <span className="text-sm text-gray-500">เพิ่มรูปถ่าย</span>
-              <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageAdd} />
-            </label>
+
+            {/* ปุ่ม 2 ตัว: ถ่ายรูป + เลือกจากคลัง */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* ถ่ายรูปจากกล้อง */}
+              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-blue-300 rounded-xl py-4 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                <Camera className="w-6 h-6 text-blue-500" />
+                <span className="text-sm font-medium text-blue-600">ถ่ายรูป</span>
+                <span className="text-xs text-gray-400">เปิดกล้อง</span>
+                {/* capture="environment" = กล้องหลัง, "user" = กล้องหน้า */}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleImageAdd}
+                />
+              </label>
+
+              {/* เลือกจากคลังรูป */}
+              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 rounded-xl py-4 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
+                <Image className="w-6 h-6 text-gray-400" />
+                <span className="text-sm font-medium text-gray-600">เลือกรูป</span>
+                <span className="text-xs text-gray-400">จากคลังภาพ</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageAdd}
+                />
+              </label>
+            </div>
+
+            {images.length > 0 && (
+              <p className="text-xs text-gray-400 text-center">{images.length} รูป · กดรูปเพื่อลบ</p>
+            )}
           </div>
         </Section>
 
