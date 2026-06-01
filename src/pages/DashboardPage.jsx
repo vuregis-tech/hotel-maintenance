@@ -85,7 +85,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">{job.description}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {job.main_area?.name}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
-                    {' · '}{job.reporter?.full_name}
+                    {' · '}{job.reporter?.full_name}{job.reporter?.department ? ` (${job.reporter.department})` : ''}
                   </p>
                 </div>
                 <div className="flex-shrink-0 text-right">
