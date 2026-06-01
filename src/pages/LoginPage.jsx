@@ -10,21 +10,37 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')          // แสดง error ใต้ฟอร์ม
+  const [errorField, setErrorField] = useState('') // 'username' | 'password' | ''
 
   if (!loading && user) return <Navigate to="/" replace />
 
   async function handleSubmit(e) {
     e.preventDefault()
+    setError('')
+    setErrorField('')
     setSubmitting(true)
     try {
       await signIn(username, password)
       toast.success('เข้าสู่ระบบสำเร็จ')
     } catch (err) {
-      toast.error(err.message || 'เข้าสู่ระบบไม่สำเร็จ')
+      const msg = err.message || 'เข้าสู่ระบบไม่สำเร็จ'
+      setError(msg)
+      // ระบุว่า field ไหนผิด
+      if (msg.includes('ชื่อผู้ใช้') || msg.includes('ไม่พบ')) setErrorField('username')
+      else if (msg.includes('รหัสผ่าน')) setErrorField('password')
+      else if (msg.includes('ถูกระงับ')) setErrorField('username')
     } finally {
       setSubmitting(false)
     }
   }
+
+  const inputClass = (field) =>
+    `w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:border-transparent ${
+      errorField === field
+        ? 'border-red-400 focus:ring-red-400 bg-red-50'
+        : 'border-gray-300 focus:ring-blue-500'
+    }`
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
@@ -40,18 +56,32 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h2 className="text-lg font-semibold text-gray-800 mb-6">เข้าสู่ระบบ</h2>
           <form onSubmit={handleSubmit} className="space-y-5">
+
+            {/* Error banner */}
+            {error && (
+              <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <span className="text-red-500 text-base mt-0.5">⚠️</span>
+                <p className="text-sm text-red-700 font-medium">{error}</p>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">ชื่อผู้ใช้</label>
               <input
                 type="text"
                 required
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => { setUsername(e.target.value); setError(''); setErrorField('') }}
                 placeholder="username"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={inputClass('username')}
                 autoComplete="username"
+                autoCapitalize="none"
               />
+              {errorField === 'username' && (
+                <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบชื่อผู้ใช้อีกครั้ง</p>
+              )}
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">รหัสผ่าน</label>
               <div className="relative">
@@ -59,9 +89,9 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => { setPassword(e.target.value); setError(''); setErrorField('') }}
                   placeholder="••••••••"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                  className={`${inputClass('password')} pr-10`}
                   autoComplete="current-password"
                 />
                 <button type="button" onClick={() => setShowPassword(v => !v)}
@@ -69,7 +99,11 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {errorField === 'password' && (
+                <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบรหัสผ่านอีกครั้ง</p>
+              )}
             </div>
+
             <button type="submit" disabled={submitting}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
               {submitting ? (
