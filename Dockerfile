@@ -1,7 +1,7 @@
 FROM python:3.9-slim
 
-# Install Node.js 18
-RUN apt-get update && apt-get install -y curl && \
+# Install Node.js 18 + PostgreSQL client library (psycopg2 ต้องการ)
+RUN apt-get update && apt-get install -y curl libpq-dev gcc && \
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*

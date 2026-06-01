@@ -79,8 +79,15 @@ def seed_data():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    seed_data()
+    db_url = settings.DATABASE_URL
+    logger.info(f"Connecting to: {'PostgreSQL' if 'postgresql' in db_url else 'SQLite'}")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created ✓")
+        seed_data()
+    except Exception as e:
+        logger.error(f"Database startup error: {e}")
+        raise
     yield
 
 
