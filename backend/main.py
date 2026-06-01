@@ -101,6 +101,19 @@ app.include_router(reports.router)
 app.include_router(areas.router)
 app.include_router(issue_types.router)
 
+
+@app.get("/api/db-info")
+def db_info():
+    """Debug endpoint — ดูว่าใช้ database อะไร"""
+    url = settings.DATABASE_URL
+    db_type = "PostgreSQL ✅" if url.startswith("postgresql") else "SQLite ❌ (ข้อมูลหายตอน deploy)"
+    return {
+        "database_type": db_type,
+        "host": url.split("@")[1].split("/")[0] if "@" in url else "local",
+        "cwd": os.getcwd(),
+        "frontend_ready": os.path.exists("frontend/index.html"),
+    }
+
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("frontend", exist_ok=True)
 
