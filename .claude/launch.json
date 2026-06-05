@@ -5,7 +5,8 @@
       "name": "hotel-maintenance",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5173"],
-      "port": 5173
+      "port": 5173,
+      "cwd": "/Users/soon/Library/CloudStorage/OneDrive-Personal/Claud/hotel-maintenance"
     }
   ]
 }

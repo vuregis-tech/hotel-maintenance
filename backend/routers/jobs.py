@@ -14,6 +14,7 @@ from ..schemas import (RequestCreate, RequestOut, WorkOrderCreate, WorkOrderComp
                        RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
 from ..services.storage import upload_image as storage_upload
+from ..services.notification import notify_new_request, notify_status_change
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
@@ -137,7 +138,9 @@ def create_request(data: RequestCreate, db: Session = Depends(get_db),
     req_id = req.id
     add_history(db, req_id, None, "pending", current_user.id, "สร้างงานใหม่")
     db.commit()
-    return get_req(db, req_id)
+    result = get_req(db, req_id)
+    notify_new_request(result, current_user)   # 🔔 Telegram
+    return result
 
 
 # ── Upload Image ──────────────────────────────────────
@@ -188,7 +191,10 @@ def assign_work(job_id: int, data: WorkOrderCreate,
     add_history(db, job_id, old_status, "assigned", current_user.id,
                 f"จ่ายงานให้ {tech.full_name}")
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, "assigned", current_user,
+                         f"จ่ายงานให้ {tech.full_name}")   # 🔔
+    return result
 
 
 # ── Accept Job ────────────────────────────────────────
@@ -218,7 +224,9 @@ def accept_job(job_id: int, db: Session = Depends(get_db),
     req.status = "in_progress"
     add_history(db, job_id, "assigned", "in_progress", current_user.id, "รับงานแล้ว")
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, "assigned", "in_progress", current_user, "รับงานแล้ว")  # 🔔
+    return result
 
 
 # ── Recall (ดึงงานกลับ) ───────────────────────────────
@@ -323,7 +331,10 @@ def reject_job(job_id: int, data: RejectBody,
     add_history(db, job_id, old_status, "pending", current_user.id,
                 f"ช่าง {current_user.full_name} ปฏิเสธงาน: {data.reason}")
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, "pending", current_user,
+                         f"ปฏิเสธงาน: {data.reason}")  # 🔔
+    return result
 
 
 # ── Transfer (ช่างโอนงานให้ช่างคนอื่น) ──────────────
@@ -490,7 +501,11 @@ def complete_work(job_id: int, data: WorkOrderComplete,
         add_history(db, job_id, old_status, "pending_inspection", current_user.id,
                     "ซ่อมเสร็จ รอตรวจ")
     db.commit()
-    return get_req(db, job_id)
+    new_status = "external_tech" if data.is_external else "pending_inspection"
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, new_status, current_user,
+                         f"ต้องใช้ช่างภายนอก: {data.external_note}" if data.is_external else "ซ่อมเสร็จ รอตรวจ")  # 🔔
+    return result
 
 
 # ── Inspection ────────────────────────────────────────
@@ -526,7 +541,10 @@ def inspect_work(job_id: int, data: InspectionCreate,
         add_history(db, job_id, old_status, "reopened", current_user.id,
                     f"ตรวจไม่ผ่าน: {data.notes or ''}")
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, result.status, current_user,
+                         data.notes if data.result == "pass" else f"ตรวจไม่ผ่าน: {data.notes or ''}")  # 🔔
+    return result
 
 
 @router.post("/{job_id}/inspect-images", response_model=RequestOut)
