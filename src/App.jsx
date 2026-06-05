@@ -9,6 +9,7 @@ import RequestsPage from './pages/RequestsPage'
 import RequestDetailPage from './pages/RequestDetailPage'
 import ReportsPage from './pages/ReportsPage'
 import AdminPage from './pages/AdminPage'
+import OnDutyPage from './pages/OnDutyPage'
 
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth()
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/requests/:id" element={<ProtectedRoute><RequestDetailPage /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute roles={['admin', 'supervisor']}><ReportsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminPage /></ProtectedRoute>} />
+          <Route path="/onduty" element={<ProtectedRoute roles={['admin','supervisor','technician']}><OnDutyPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

@@ -105,6 +105,30 @@ class RequestImage(Base):
     request = relationship("MaintenanceRequest", back_populates="images")
 
 
+class Department(Base):
+    """แผนกที่ Admin จัดการได้"""
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OnDutySchedule(Base):
+    """ตารางช่าง On Duty รายวัน"""
+    __tablename__ = "on_duty_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    technician_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    duty_date = Column(String(10), nullable=False)   # YYYY-MM-DD
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    technician = relationship("User", foreign_keys=[technician_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class WorkOrder(Base):
     __tablename__ = "work_orders"
 
@@ -124,12 +148,19 @@ class WorkOrder(Base):
     is_external = Column(Boolean, default=False)   # ต้องใช้ช่างภายนอก
     external_note = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    # statuses: assigned, in_progress, completed, external
+    # statuses: assigned, in_progress, completed, external, rejected, transferred
     status = Column(String(20), nullable=False, default="assigned")
+    # ข้อ 4: ปฏิเสธงาน
+    rejection_reason = Column(Text, nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    # ข้อ 6: โอนงานต่อ
+    transferred_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    transfer_note = Column(Text, nullable=True)
 
     request = relationship("MaintenanceRequest", back_populates="work_orders")
     technician = relationship("User", foreign_keys=[technician_id], back_populates="technician_orders")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id], back_populates="assigned_orders")
+    transferred_to = relationship("User", foreign_keys=[transferred_to_id])
     co_assignments = relationship("CoAssignment", back_populates="work_order", cascade="all, delete-orphan")
 
 

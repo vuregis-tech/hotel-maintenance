@@ -89,6 +89,24 @@ export const api = {
     return request('GET', `/api/jobs/location-history${qs ? `?${qs}` : ''}`)
   },
 
+  // Departments
+  getDepartments: () => request('GET', '/api/departments'),
+  createDepartment: (data) => request('POST', '/api/departments', data),
+  updateDepartment: (id, data) => request('PUT', `/api/departments/${id}`, data),
+  deleteDepartment: (id) => request('DELETE', `/api/departments/${id}`),
+
+  // On-Duty
+  getOnDuty: (date) => request('GET', `/api/onduty${date ? `?duty_date=${date}` : ''}`),
+  getOnDutyMonth: (year, month) => request('GET', `/api/onduty/month?year=${year}&month=${month}`),
+  setOnDuty: (data) => request('POST', '/api/onduty', data),
+  removeOnDuty: (id) => request('DELETE', `/api/onduty/${id}`),
+  amIOnDuty: () => request('GET', '/api/onduty/me/today'),
+
+  // Job actions (new)
+  selfAssignJob: (id) => request('POST', `/api/jobs/${id}/self-assign`),
+  rejectJob: (id, reason) => request('POST', `/api/jobs/${id}/reject`, { reason }),
+  transferJob: (id, technicianId, note) => request('POST', `/api/jobs/${id}/transfer`, { technician_id: technicianId, note }),
+
   // Reports
   getReportSummary: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()

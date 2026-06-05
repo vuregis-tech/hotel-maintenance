@@ -135,11 +135,16 @@ export default function RequestDetailPage() {
   const [technicians, setTechnicians] = useState([])
 
   // Modals
-  const [modal, setModal] = useState(null) // assign|accept|complete|inspect|reassign|coassign|recall|history
+  const [modal, setModal] = useState(null) // assign|accept|complete|inspect|reassign|coassign|recall|history|reject|transfer
 
   // Assign / Reassign / CoAssign
   const [selectedTech, setSelectedTech] = useState('')
   const [acting, setActing] = useState(false)
+
+  // Reject
+  const [rejectReason, setRejectReason] = useState('')
+  // Transfer
+  const [transferNote, setTransferNote] = useState('')
 
   // Complete
   const [completeForm, setCompleteForm] = useState({
@@ -253,6 +258,37 @@ export default function RequestDetailPage() {
     catch (err) { toast.error(err.message) }
   }
 
+  async function handleReject(reason) {
+    if (!reason.trim()) return toast.error('กรุณาระบุเหตุผล')
+    setActing(true)
+    try {
+      const updated = await api.rejectJob(job.id, reason)
+      setJob(updated); setModal(null)
+      toast.success('ปฏิเสธงานแล้ว')
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleTransfer(techId, note) {
+    if (!techId) return toast.error('กรุณาเลือกช่าง')
+    setActing(true)
+    try {
+      const updated = await api.transferJob(job.id, Number(techId), note)
+      setJob(updated); setModal(null); setSelectedTech('')
+      toast.success('โอนงานสำเร็จ')
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleSelfAssign() {
+    setActing(true)
+    try {
+      const updated = await api.selfAssignJob(job.id)
+      setJob(updated); toast.success('รับงานสำเร็จ')
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
   if (loading) return <div className="p-8 text-center text-gray-400 text-sm">กำลังโหลด...</div>
   if (!job) return <div className="p-8 text-center text-gray-400 text-sm">ไม่พบงาน</div>
 
@@ -264,13 +300,16 @@ export default function RequestDetailPage() {
   const isSuperAdmin = ['admin','supervisor'].includes(user?.role)
   const isMyWO = wo?.technician?.id === user?.id  // ช่างที่ถูก assign โดยตรง
 
-  const canAssign   = isSuperAdmin && ['pending','reopened','external_tech'].includes(job.status)
-  const canAccept   = isMyWO && job.status === 'assigned'                // เฉพาะช่างที่ได้รับ assign
-  const canComplete = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)  // ช่างที่ assign + supervisor override
-  const canRecall   = isSuperAdmin && ['assigned','in_progress'].includes(job.status)  // หัวหน้าดึงงานกลับ
-  const canCoAssign = isSuperAdmin && ['assigned','in_progress'].includes(job.status)
-  const canInspect  = job.status === 'pending_inspection'
-  const canCancel   = job.status === 'pending' && (user?.role === 'admin' || job.reporter?.id === user?.id)
+  const canAssign    = isSuperAdmin && ['pending','reopened','external_tech'].includes(job.status)
+  const canAccept    = isMyWO && job.status === 'assigned'
+  const canComplete  = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)
+  const canRecall    = isSuperAdmin && ['assigned','in_progress'].includes(job.status)
+  const canCoAssign  = isSuperAdmin && ['assigned','in_progress'].includes(job.status)
+  const canInspect   = job.status === 'pending_inspection'
+  const canCancel    = job.status === 'pending' && (user?.role === 'admin' || job.reporter?.id === user?.id)
+  const canReject    = isMyWO && job.status === 'assigned'   // ข้อ 4
+  const canTransfer  = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)  // ข้อ 6
+  const canSelfAssign = user?.role === 'technician' && job.status === 'pending'  // ข้อ 3
 
   const Section = ({ title, children }) => (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -365,6 +404,24 @@ export default function RequestDetailPage() {
           className="flex items-center gap-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium">
           <History className="w-4 h-4" /> ประวัติพื้นที่นี้
         </button>
+        {canSelfAssign && (
+          <button onClick={handleSelfAssign} disabled={acting}
+            className="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-medium">
+            <CheckCircle className="w-4 h-4" /> รับงาน (On Duty)
+          </button>
+        )}
+        {canReject && (
+          <button onClick={() => { setRejectReason(''); setModal('reject') }}
+            className="flex items-center gap-1.5 border border-red-300 text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-medium">
+            <XCircle className="w-4 h-4" /> ปฏิเสธงาน
+          </button>
+        )}
+        {canTransfer && (
+          <button onClick={() => { setSelectedTech(''); setTransferNote(''); setModal('transfer') }}
+            className="flex items-center gap-1.5 border border-indigo-300 text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg text-sm font-medium">
+            <RefreshCw className="w-4 h-4" /> โอนงาน
+          </button>
+        )}
         {canCancel && (
           <button onClick={handleCancel}
             className="flex items-center gap-1.5 border border-red-300 text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-medium">
@@ -747,6 +804,60 @@ export default function RequestDetailPage() {
             }} disabled={acting}
               className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
               {acting ? 'กำลังบันทึก...' : 'ยืนยันดึงงานกลับ'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reject Modal */}
+      {modal === 'reject' && (
+        <Modal title="ปฏิเสธงาน" onClose={() => setModal(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">ระบุเหตุผลในการปฏิเสธงานนี้ หัวหน้าช่างจะรับทราบและจัดสรรงานใหม่</p>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">เหตุผล *</label>
+              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                rows={3} placeholder="เช่น ติดภารกิจอื่น, ไม่มีความเชี่ยวชาญด้านนี้..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400" />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
+            <button onClick={() => handleReject(rejectReason)} disabled={acting}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
+              {acting ? 'กำลังบันทึก...' : 'ยืนยันปฏิเสธงาน'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Transfer Modal */}
+      {modal === 'transfer' && (
+        <Modal title="โอนงานให้ช่างคนอื่น" onClose={() => setModal(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">เลือกช่างที่จะโอนงานให้ ช่างคนนั้นจะได้รับงานนี้ทันที</p>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">ช่างที่รับงานต่อ *</label>
+              <select value={selectedTech} onChange={e => setSelectedTech(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">-- เลือกช่าง --</option>
+                {technicians.filter(t => t.id !== wo?.technician?.id).map(t =>
+                  <option key={t.id} value={t.id}>{t.full_name} ({t.department})</option>
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">หมายเหตุ</label>
+              <textarea value={transferNote} onChange={e => setTransferNote(e.target.value)}
+                rows={2} placeholder="เช่น งานค้างต่อ, ยังซ่อมไม่เสร็จเพราะ..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
+            <button onClick={() => handleTransfer(selectedTech, transferNote)} disabled={acting}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
+              {acting ? 'กำลังโอน...' : 'ยืนยันโอนงาน'}
             </button>
           </div>
         </Modal>

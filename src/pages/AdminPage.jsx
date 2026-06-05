@@ -44,15 +44,72 @@ function EditableItem({ name, onSave, onDelete, children }) {
   )
 }
 
+// ─── Departments Tab ──────────────────────────────────
+function DepartmentsTab() {
+  const [depts, setDepts] = useState([])
+  const [newName, setNewName] = useState('')
+
+  useEffect(() => { api.getDepartments().then(setDepts) }, [])
+
+  async function add() {
+    if (!newName.trim()) return
+    try {
+      const d = await api.createDepartment({ name: newName.trim() })
+      setDepts(x => [...x, d])
+      setNewName('')
+      toast.success('เพิ่มแผนกสำเร็จ')
+    } catch (err) { toast.error(err.message) }
+  }
+
+  async function del(id) {
+    if (!confirm('ลบแผนกนี้?')) return
+    try { await api.deleteDepartment(id); setDepts(d => d.filter(x => x.id !== id)); toast.success('ลบสำเร็จ') }
+    catch (err) { toast.error(err.message) }
+  }
+
+  async function save(id, name) {
+    await api.updateDepartment(id, { name })
+    setDepts(d => d.map(x => x.id === id ? { ...x, name } : x))
+    toast.success('แก้ไขสำเร็จ')
+  }
+
+  return (
+    <div>
+      <h2 className="font-semibold text-gray-900 mb-4">จัดการแผนก</h2>
+      <div className="flex gap-2 mb-4">
+        <input value={newName} onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="ชื่อแผนกใหม่"
+          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button onClick={add} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <Plus className="w-4 h-4" /> เพิ่ม
+        </button>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+        {depts.length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">ยังไม่มีแผนก</p>}
+        {depts.map(d => (
+          <div key={d.id} className="px-4">
+            <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Users Tab ────────────────────────────────────────
 function UsersTab() {
   const [users, setUsers] = useState([])
+  const [depts, setDepts] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editUser, setEditUser] = useState(null)
   const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.getUsers().then(setUsers) }, [])
+  useEffect(() => {
+    api.getUsers().then(setUsers)
+    api.getDepartments().then(setDepts)
+  }, [])
 
   function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
   function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role }); setEditUser(u); setShowForm(true) }
@@ -127,7 +184,7 @@ function UsersTab() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
             <h3 className="font-semibold text-gray-900 mb-4">{editUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}</h3>
             <div className="space-y-3">
-              {[['full_name', 'ชื่อ-นามสกุล', 'text'], ['username', 'ชื่อผู้ใช้', 'text'], ['password', editUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน', 'password'], ['position', 'ตำแหน่ง', 'text'], ['department', 'แผนก', 'text']].map(([f, label, type]) => (
+              {[['full_name', 'ชื่อ-นามสกุล', 'text'], ['username', 'ชื่อผู้ใช้', 'text'], ['password', editUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน', 'password'], ['position', 'ตำแหน่ง', 'text']].map(([f, label, type]) => (
                 <div key={f}>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">{label}</label>
                   <input type={type} value={form[f]} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
@@ -135,6 +192,17 @@ function UsersTab() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
                 </div>
               ))}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">แผนก</label>
+                <select value={form.department} onChange={e => setForm(x => ({ ...x, department: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">-- เลือกแผนก --</option>
+                  {depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  {form.department && !depts.find(d => d.name === form.department) && (
+                    <option value={form.department}>{form.department} (เดิม)</option>
+                  )}
+                </select>
+              </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">บทบาท</label>
                 <select value={form.role} onChange={e => setForm(x => ({ ...x, role: e.target.value }))}
@@ -323,6 +391,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState('users')
   const tabs = [
     { key: 'users', label: 'ผู้ใช้งาน' },
+    { key: 'departments', label: 'แผนก' },
     { key: 'areas', label: 'พื้นที่' },
     { key: 'issue_types', label: 'ประเภทงาน' },
   ]
@@ -344,6 +413,7 @@ export default function AdminPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         {tab === 'users' && <UsersTab />}
+        {tab === 'departments' && <DepartmentsTab />}
         {tab === 'areas' && <AreasTab />}
         {tab === 'issue_types' && <IssueTypesTab />}
       </div>

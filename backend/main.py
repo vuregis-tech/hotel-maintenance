@@ -12,6 +12,7 @@ from .auth import hash_password
 from .database import SessionLocal
 from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
+from .routers import departments, onduty
 
 settings = get_settings()
 
@@ -80,6 +81,30 @@ def seed_data():
         db.close()
 
 
+def run_migrations():
+    """เพิ่ม column ใหม่ที่เพิ่มเข้ามาโดยไม่ทำลายข้อมูลเดิม"""
+    from sqlalchemy import text
+    is_pg = "postgresql" in settings.DATABASE_URL or settings.DATABASE_URL.startswith("postgres://")
+    migrations = [
+        # ข้อ 4: rejection fields
+        ("work_orders", "rejection_reason", "TEXT"),
+        ("work_orders", "rejected_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+        # ข้อ 6: transfer fields
+        ("work_orders", "transferred_to_id", "INTEGER"),
+        ("work_orders", "transfer_note", "TEXT"),
+    ]
+    with engine.connect() as conn:
+        for table, col, col_type in migrations:
+            try:
+                if is_pg:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+                else:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_url = settings.DATABASE_URL
@@ -88,6 +113,8 @@ async def lifespan(app: FastAPI):
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created ✓")
+        run_migrations()
+        logger.info("Migrations applied ✓")
         seed_data()
     except Exception as e:
         logger.error(f"Database startup error: {e}")
@@ -111,6 +138,8 @@ app.include_router(jobs.router)
 app.include_router(reports.router)
 app.include_router(areas.router)
 app.include_router(issue_types.router)
+app.include_router(departments.router)
+app.include_router(onduty.router)
 
 
 @app.get("/api/db-info")

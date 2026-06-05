@@ -147,6 +147,15 @@ class RecallBody(BaseModel):
     new_technician_id: Optional[int] = None
 
 
+class RejectBody(BaseModel):
+    reason: str
+
+
+class TransferBody(BaseModel):
+    technician_id: int
+    note: Optional[str] = None
+
+
 class WorkOrderOut(BaseModel):
     id: int
     request_id: int
@@ -163,7 +172,41 @@ class WorkOrderOut(BaseModel):
     external_note: Optional[str]
     completed_at: Optional[datetime]
     status: str
+    rejection_reason: Optional[str] = None
+    rejected_at: Optional[datetime] = None
+    transferred_to: Optional[UserOut] = None
+    transfer_note: Optional[str] = None
     co_assignments: List[CoAssignmentOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+# ── Departments ───────────────────────────────────────
+class DepartmentCreate(BaseModel):
+    name: str
+
+
+class DepartmentOut(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+# ── On-Duty ───────────────────────────────────────────
+class OnDutyCreate(BaseModel):
+    technician_id: int
+    duty_date: str   # YYYY-MM-DD
+
+
+class OnDutyOut(BaseModel):
+    id: int
+    technician: Optional[UserOut]
+    duty_date: str
+    created_by: Optional[UserOut]
 
     class Config:
         from_attributes = True

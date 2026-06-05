@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
   Wrench, LayoutDashboard, PlusCircle, ClipboardList,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck
 } from 'lucide-react'
 
 const ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', supervisor: 'หัวหน้าช่าง', technician: 'ช่าง', staff: 'พนักงาน' }
@@ -46,6 +46,7 @@ export default function Layout({ children }) {
     { to: '/', icon: LayoutDashboard, label: 'แดชบอร์ด', roles: ['admin', 'supervisor', 'technician', 'staff'] },
     { to: '/new-request', icon: PlusCircle, label: 'แจ้งซ่อม', roles: ['admin', 'supervisor', 'technician', 'staff'] },
     { to: '/requests', icon: ClipboardList, label: 'รายการงานซ่อม', roles: ['admin', 'supervisor', 'technician', 'staff'] },
+    { to: '/onduty', icon: CalendarCheck, label: 'On Duty', roles: ['admin', 'supervisor', 'technician'] },
     { to: '/reports', icon: BarChart2, label: 'รายงาน', roles: ['admin', 'supervisor'] },
     { to: '/admin', icon: Settings, label: 'จัดการระบบ', roles: ['admin'] },
   ].filter(item => item.roles.includes(user?.role))

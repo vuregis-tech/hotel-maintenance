@@ -8,9 +8,10 @@ import os, uuid
 
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
-                      Inspection, InspectionImage, RequestHistory, User)
+                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule)
 from ..schemas import (RequestCreate, RequestOut, WorkOrderCreate, WorkOrderComplete,
-                       WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody)
+                       WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
+                       RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
 from ..services.storage import upload_image as storage_upload
 
@@ -259,6 +260,103 @@ def recall_job(job_id: int, data: RecallBody,
         note = f"ดึงงานกลับจาก {recalled_tech_name}"
         add_history(db, job_id, old_status, "pending", current_user.id, note)
 
+    db.commit()
+    return get_req(db, job_id)
+
+
+# ── Self-assign (ช่าง On Duty รับงานเอง) ─────────────
+
+@router.post("/{job_id}/self-assign", response_model=RequestOut)
+def self_assign(job_id: int,
+                db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    """ช่าง On Duty รับงาน pending ได้เลยโดยไม่ต้องให้หัวหน้า assign"""
+    if current_user.role not in ("technician", "supervisor", "admin"):
+        raise HTTPException(status_code=403, detail="เฉพาะช่างเท่านั้น")
+    from datetime import date
+    today = date.today().isoformat()
+    on_duty = (db.query(OnDutySchedule)
+               .filter(OnDutySchedule.technician_id == current_user.id,
+                       OnDutySchedule.duty_date == today).first())
+    if not on_duty and current_user.role == "technician":
+        raise HTTPException(status_code=403, detail="คุณไม่ได้อยู่ใน On Duty วันนี้")
+    req = get_req(db, job_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="รับได้เฉพาะงานที่ยังรอรับงานเท่านั้น")
+    wo = WorkOrder(request_id=job_id, technician_id=current_user.id,
+                   assigned_by_id=current_user.id, status="in_progress",
+                   accepted_at=datetime.now())
+    db.add(wo)
+    req.status = "in_progress"
+    add_history(db, job_id, "pending", "in_progress", current_user.id,
+                f"ช่าง On Duty {current_user.full_name} รับงานเอง")
+    db.commit()
+    return get_req(db, job_id)
+
+
+# ── Reject (ช่างปฏิเสธงาน) ───────────────────────────
+
+@router.post("/{job_id}/reject", response_model=RequestOut)
+def reject_job(job_id: int, data: RejectBody,
+               db: Session = Depends(get_db),
+               current_user: User = Depends(get_current_user)):
+    """ช่างที่ได้รับ assign ปฏิเสธงาน พร้อมระบุเหตุผล"""
+    req = get_req(db, job_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    wo = (db.query(WorkOrder)
+          .filter(WorkOrder.request_id == job_id,
+                  WorkOrder.technician_id == current_user.id,
+                  WorkOrder.status == "assigned").first())
+    if not wo:
+        raise HTTPException(status_code=403, detail="ไม่มีงานที่รอรับของคุณ")
+    wo.status = "rejected"
+    wo.rejection_reason = data.reason
+    wo.rejected_at = datetime.now()
+    old_status = req.status
+    req.status = "pending"
+    add_history(db, job_id, old_status, "pending", current_user.id,
+                f"ช่าง {current_user.full_name} ปฏิเสธงาน: {data.reason}")
+    db.commit()
+    return get_req(db, job_id)
+
+
+# ── Transfer (ช่างโอนงานให้ช่างคนอื่น) ──────────────
+
+@router.post("/{job_id}/transfer", response_model=RequestOut)
+def transfer_job(job_id: int, data: TransferBody,
+                 db: Session = Depends(get_db),
+                 current_user: User = Depends(get_current_user)):
+    """ช่างโอนงานที่กำลังทำให้ช่างคนอื่น"""
+    req = get_req(db, job_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    wo = (db.query(WorkOrder)
+          .filter(WorkOrder.request_id == job_id,
+                  WorkOrder.technician_id == current_user.id,
+                  WorkOrder.status.in_(["assigned", "in_progress"])).first())
+    if not wo and current_user.role not in ("supervisor", "admin"):
+        raise HTTPException(status_code=403, detail="ไม่ใช่งานของคุณ")
+    if not wo:
+        wo = (db.query(WorkOrder)
+              .filter(WorkOrder.request_id == job_id,
+                      WorkOrder.status.in_(["assigned", "in_progress"])).first())
+    target_tech = db.query(User).filter(User.id == data.technician_id,
+                                        User.role == "technician").first()
+    if not target_tech:
+        raise HTTPException(status_code=404, detail="ไม่พบช่างที่ต้องการโอนงาน")
+    wo.status = "transferred"
+    wo.transferred_to_id = data.technician_id
+    wo.transfer_note = data.note
+    new_wo = WorkOrder(request_id=job_id, technician_id=data.technician_id,
+                       assigned_by_id=current_user.id, status="assigned")
+    db.add(new_wo)
+    req.status = "assigned"
+    add_history(db, job_id, req.status, "assigned", current_user.id,
+                f"โอนงานจาก {current_user.full_name} → {target_tech.full_name}"
+                + (f": {data.note}" if data.note else ""))
     db.commit()
     return get_req(db, job_id)
 

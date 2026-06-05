@@ -90,9 +90,8 @@ export default function NewRequestPage() {
       }
       const job = await api.createJob(payload)
 
-      for (const img of images) {
-        try { await api.uploadImage(job.id, img.file) } catch {}
-      }
+      // upload ทุกรูปพร้อมกัน (parallel) แทนที่จะรอทีละรูป
+      await Promise.all(images.map(img => api.uploadImage(job.id, img.file).catch(() => {})))
 
       toast.success('แจ้งซ่อมสำเร็จ')
       navigate(`/requests/${job.id}`)

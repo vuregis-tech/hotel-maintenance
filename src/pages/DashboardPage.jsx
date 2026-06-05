@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight } from 'lucide-react'
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight, Wrench, DoorClosed } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -36,6 +36,11 @@ export default function DashboardPage() {
   const inProgress = jobs.filter(j => ['assigned', 'in_progress'].includes(j.status)).length
   const pendingInspection = jobs.filter(j => j.status === 'pending_inspection').length
   const urgent = jobs.filter(j => j.is_urgent && !['completed', 'cancelled'].includes(j.status)).length
+  const externalTech = jobs.filter(j => j.status === 'external_tech').length
+  const oooRooms = jobs.reduce((acc, j) => {
+    const wo = j.work_orders?.find(w => w.ooo_room && ['assigned','in_progress','external'].includes(w.status))
+    return acc + (wo ? (wo.ooo_days || 1) : 0)
+  }, 0)
   const recentJobs = jobs.slice(0, 8)
 
   return (
@@ -52,11 +57,13 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard label="รอรับงาน" value={pending} icon={ClipboardList} color="bg-yellow-50 text-yellow-600" />
         <StatCard label="กำลังดำเนินการ" value={inProgress} icon={Clock} color="bg-blue-50 text-blue-600" />
         <StatCard label="รอตรวจ" value={pendingInspection} icon={CheckCircle} color="bg-orange-50 text-orange-600" />
         <StatCard label="งานด่วน" value={urgent} icon={AlertTriangle} color="bg-red-50 text-red-600" />
+        <StatCard label="รอช่างนอก" value={externalTech} icon={Wrench} color="bg-purple-50 text-purple-600" />
+        <StatCard label="ห้องปิดบริการ" value={oooRooms} icon={DoorClosed} color="bg-gray-100 text-gray-600" />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200">
