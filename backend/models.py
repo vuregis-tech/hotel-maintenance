@@ -125,8 +125,8 @@ class OnDutySchedule(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    technician = relationship("User", foreign_keys=[technician_id])
-    created_by = relationship("User", foreign_keys=[created_by_id])
+    technician = relationship("User", foreign_keys=[technician_id], overlaps="created_by")
+    created_by = relationship("User", foreign_keys=[created_by_id], overlaps="technician")
 
 
 class WorkOrder(Base):
@@ -160,7 +160,8 @@ class WorkOrder(Base):
     request = relationship("MaintenanceRequest", back_populates="work_orders")
     technician = relationship("User", foreign_keys=[technician_id], back_populates="technician_orders")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id], back_populates="assigned_orders")
-    transferred_to = relationship("User", foreign_keys=[transferred_to_id])
+    transferred_to = relationship("User", foreign_keys=[transferred_to_id],
+                                  overlaps="technician,technician_orders,assigned_by,assigned_orders")
     co_assignments = relationship("CoAssignment", back_populates="work_order", cascade="all, delete-orphan")
 
 

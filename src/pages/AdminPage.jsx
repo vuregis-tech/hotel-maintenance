@@ -49,7 +49,9 @@ function DepartmentsTab() {
   const [depts, setDepts] = useState([])
   const [newName, setNewName] = useState('')
 
-  useEffect(() => { api.getDepartments().then(setDepts) }, [])
+  useEffect(() => {
+    api.getDepartments().then(setDepts).catch(err => toast.error('โหลดแผนกไม่ได้: ' + err.message))
+  }, [])
 
   async function add() {
     if (!newName.trim()) return
@@ -108,7 +110,7 @@ function UsersTab() {
 
   useEffect(() => {
     api.getUsers().then(setUsers)
-    api.getDepartments().then(setDepts)
+    api.getDepartments().then(setDepts).catch(() => {})
   }, [])
 
   function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
