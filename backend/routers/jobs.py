@@ -1,6 +1,6 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -52,7 +52,10 @@ def list_requests(
 ):
     q = db.query(MaintenanceRequest)
     if current_user.role == "staff":
-        q = q.filter(MaintenanceRequest.reporter_id == current_user.id)
+        # เห็นงานทุกคนในแผนกเดียวกัน
+        ReporterAlias = aliased(User)
+        q = (q.join(ReporterAlias, MaintenanceRequest.reporter_id == ReporterAlias.id)
+               .filter(ReporterAlias.department == current_user.department))
     elif current_user.role == "technician":
         assigned_ids = (db.query(WorkOrder.request_id)
                         .filter(WorkOrder.technician_id == current_user.id).subquery())
@@ -503,6 +506,13 @@ def inspect_work(job_id: int, data: InspectionCreate,
         raise HTTPException(status_code=400, detail="งานไม่อยู่ในสถานะรอตรวจ")
     if data.result not in ("pass", "fail"):
         raise HTTPException(status_code=400, detail="ผลต้องเป็น pass หรือ fail")
+
+    # ตรวจสิทธิ์: admin/supervisor ทำได้ทุกงาน
+    # staff ทำได้เฉพาะงานในแผนกตัวเอง
+    if current_user.role == "staff":
+        reporter = db.query(User).filter(User.id == req.reporter_id).first()
+        if not reporter or reporter.department != current_user.department:
+            raise HTTPException(status_code=403, detail="ไม่มีสิทธิ์ตรวจงานของแผนกอื่น")
 
     insp = Inspection(request_id=job_id, inspector_id=current_user.id,
                       result=data.result, notes=data.notes)

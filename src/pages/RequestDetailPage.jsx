@@ -300,16 +300,19 @@ export default function RequestDetailPage() {
   const isSuperAdmin = ['admin','supervisor'].includes(user?.role)
   const isMyWO = wo?.technician?.id === user?.id  // ช่างที่ถูก assign โดยตรง
 
+  const isSameDept   = user?.department && job.reporter?.department === user?.department
+
   const canAssign    = isSuperAdmin && ['pending','reopened','external_tech'].includes(job.status)
   const canAccept    = isMyWO && job.status === 'assigned'
   const canComplete  = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)
   const canRecall    = isSuperAdmin && ['assigned','in_progress'].includes(job.status)
   const canCoAssign  = isSuperAdmin && ['assigned','in_progress'].includes(job.status)
-  const canInspect   = job.status === 'pending_inspection'
+  // staff แผนกเดียวกันตรวจและปิดงานได้
+  const canInspect   = job.status === 'pending_inspection' && (isSuperAdmin || isSameDept || user?.role !== 'staff')
   const canCancel    = job.status === 'pending' && (user?.role === 'admin' || job.reporter?.id === user?.id)
-  const canReject    = isMyWO && job.status === 'assigned'   // ข้อ 4
-  const canTransfer  = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)  // ข้อ 6
-  const canSelfAssign = user?.role === 'technician' && job.status === 'pending'  // ข้อ 3
+  const canReject    = isMyWO && job.status === 'assigned'
+  const canTransfer  = (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)
+  const canSelfAssign = user?.role === 'technician' && job.status === 'pending'
 
   const Section = ({ title, children }) => (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
