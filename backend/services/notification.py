@@ -60,10 +60,13 @@ def _send_bg(token: str, chat_ids: list, text: str):
 
 
 def _targets(*chat_ids) -> list:
-    """รวม chat IDs ที่ไม่ซ้ำและไม่ว่าง"""
+    """รวม chat IDs ที่ไม่ซ้ำและไม่ว่าง (strip whitespace อัตโนมัติ)"""
     seen = set()
     result = []
     for cid in chat_ids:
+        if not cid:
+            continue
+        cid = str(cid).strip()   # ตัด space ที่อาจติดมาจาก Railway
         if cid and cid not in seen and cid.lstrip("-").isdigit():
             seen.add(cid)
             result.append(cid)

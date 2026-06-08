@@ -159,6 +159,45 @@ def db_info():
         "frontend_ready": os.path.exists("frontend/index.html"),
     }
 
+
+@app.get("/api/telegram-test")
+async def telegram_test():
+    """ทดสอบ Telegram — เรียก endpoint นี้แล้วดูผลลัพธ์"""
+    import httpx
+    s = settings
+    result = {
+        "token_set": bool(s.TELEGRAM_BOT_TOKEN),
+        "group_all": s.TELEGRAM_GROUP_ALL or "(ว่าง)",
+        "group_reporter": s.TELEGRAM_GROUP_REPORTER or "(ว่าง)",
+        "group_technician": s.TELEGRAM_GROUP_TECHNICIAN or "(ว่าง)",
+        "group_inspector": s.TELEGRAM_GROUP_INSPECTOR or "(ว่าง)",
+        "send_result": {}
+    }
+    if not s.TELEGRAM_BOT_TOKEN:
+        result["error"] = "TELEGRAM_BOT_TOKEN ยังไม่ได้ตั้งค่า"
+        return result
+    # ทดสอบส่งข้อความจริง
+    chat_ids = [c for c in [
+        s.TELEGRAM_GROUP_ALL, s.TELEGRAM_GROUP_REPORTER,
+        s.TELEGRAM_GROUP_TECHNICIAN, s.TELEGRAM_GROUP_INSPECTOR
+    ] if c and c.strip()]
+    seen = set()
+    async with httpx.AsyncClient(timeout=10) as client:
+        for cid in chat_ids:
+            cid = cid.strip()
+            if cid in seen:
+                continue
+            seen.add(cid)
+            try:
+                resp = await client.post(
+                    f"https://api.telegram.org/bot{s.TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": cid, "text": "✅ ทดสอบระบบแจ้งซ่อม — การเชื่อมต่อสำเร็จ!"},
+                )
+                result["send_result"][cid] = resp.json()
+            except Exception as e:
+                result["send_result"][cid] = {"error": str(e)}
+    return result
+
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("frontend", exist_ok=True)
 
