@@ -13,7 +13,6 @@ from .database import SessionLocal
 from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
 from .routers import departments, onduty
-from .bot.bot import start_polling, stop_polling
 
 settings = get_settings()
 
@@ -120,9 +119,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Database startup error: {e}")
         raise
-    await start_polling()   # 🤖 Telegram bot (no-op if token not set)
+    # 🤖 Telegram bot — lazy import เพื่อไม่ให้ crash app ถ้า library มีปัญหา
+    try:
+        from .bot.bot import start_polling, stop_polling as _stop
+        await start_polling()
+        _stop_fn = _stop
+    except Exception as e:
+        logger.warning(f"Telegram bot import/start failed: {e}")
+        _stop_fn = None
     yield
-    await stop_polling()
+    if _stop_fn:
+        try:
+            await _stop_fn()
+        except Exception:
+            pass
 
 
 app = FastAPI(title="Hotel Maintenance System", version="2.0.0", lifespan=lifespan)
