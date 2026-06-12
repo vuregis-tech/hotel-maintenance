@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useLang } from '../../context/LangContext'
 import {
   Wrench, LayoutDashboard, PlusCircle, ClipboardList,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck, Languages
 } from 'lucide-react'
-
-const ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', supervisor: 'หัวหน้าช่าง', technician: 'ช่าง', staff: 'พนักงาน' }
 
 function NavItem({ to, icon: Icon, label, onClick }) {
   if (onClick) {
@@ -34,6 +33,7 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 
 export default function Layout({ children }) {
   const { user, signOut } = useAuth()
+  const { lang, setLang, t } = useLang()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -43,12 +43,12 @@ export default function Layout({ children }) {
   }
 
   const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'แดชบอร์ด', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/new-request', icon: PlusCircle, label: 'แจ้งซ่อม', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/requests', icon: ClipboardList, label: 'รายการงานซ่อม', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/onduty', icon: CalendarCheck, label: 'On Duty', roles: ['admin', 'supervisor', 'technician'] },
-    { to: '/reports', icon: BarChart2, label: 'รายงาน', roles: ['admin', 'supervisor'] },
-    { to: '/admin', icon: Settings, label: 'จัดการระบบ', roles: ['admin'] },
+    { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', roles: ['admin', 'supervisor', 'technician', 'staff'] },
+    { to: '/new-request', icon: PlusCircle, labelKey: 'nav.newRequest', roles: ['admin', 'supervisor', 'technician', 'staff'] },
+    { to: '/requests', icon: ClipboardList, labelKey: 'nav.requests', roles: ['admin', 'supervisor', 'technician', 'staff'] },
+    { to: '/onduty', icon: CalendarCheck, labelKey: 'nav.onDuty', roles: ['admin', 'supervisor', 'technician'] },
+    { to: '/reports', icon: BarChart2, labelKey: 'nav.reports', roles: ['admin', 'supervisor'] },
+    { to: '/admin', icon: Settings, labelKey: 'nav.admin', roles: ['admin'] },
   ].filter(item => item.roles.includes(user?.role))
 
   const Sidebar = () => (
@@ -60,7 +60,7 @@ export default function Layout({ children }) {
         </div>
         <div>
           <p className="font-bold text-gray-900 text-sm leading-tight">Hotel Maintenance</p>
-          <p className="text-xs text-gray-400">ระบบแจ้งซ่อม</p>
+          <p className="text-xs text-gray-400">{t('auth.systemName')}</p>
         </div>
       </div>
 
@@ -74,18 +74,35 @@ export default function Layout({ children }) {
             user?.role === 'supervisor' ? 'bg-orange-100 text-orange-700' :
             user?.role === 'technician' ? 'bg-green-100 text-green-700' :
             'bg-blue-100 text-blue-700'
-          }`}>{ROLE_LABELS[user?.role]}</span>
+          }`}>{t(`role.${user?.role}`)}</span>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(item => <NavItem key={item.to} {...item} />)}
+        {navItems.map(item => <NavItem key={item.to} {...item} label={t(item.labelKey)} />)}
       </nav>
 
+      {/* Language switcher */}
+      <div className="px-4 py-3 border-t border-gray-100">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <Languages className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <div className="flex gap-1 flex-1">
+            {['th', 'en'].map(l => (
+              <button key={l} onClick={() => setLang(l)}
+                className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
+                  lang === l ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+                }`}>
+                {l === 'th' ? 'ไทย' : 'EN'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Logout */}
-      <div className="px-3 py-4 border-t border-gray-100">
-        <NavItem icon={LogOut} label="ออกจากระบบ" onClick={handleSignOut} />
+      <div className="px-3 pb-4 border-t border-gray-100">
+        <NavItem icon={LogOut} label={t('nav.signOut')} onClick={handleSignOut} />
       </div>
     </div>
   )
@@ -123,7 +140,7 @@ export default function Layout({ children }) {
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
               <Wrench className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold text-gray-900 text-sm">ระบบแจ้งซ่อม</span>
+            <span className="font-semibold text-gray-900 text-sm">{t('auth.systemName')}</span>
           </div>
         </header>
 

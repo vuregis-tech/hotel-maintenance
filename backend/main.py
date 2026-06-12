@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 
 from .database import Base, engine
-from .models import User, MainArea, SubArea, IssueType
+from .models import User, MainArea, SubArea, IssueType, RepairLog
 from .auth import hash_password
 from .database import SessionLocal
 from .config import get_settings

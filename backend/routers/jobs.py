@@ -8,7 +8,7 @@ import os, uuid
 
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
-                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule)
+                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule, RepairLog)
 from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
@@ -448,6 +448,33 @@ def remove_co_assign(job_id: int, co_id: int,
     return get_req(db, job_id)
 
 
+# ── Completed Today ───────────────────────────────────
+
+@router.get("/completed-today", response_model=List[RequestOut])
+def list_completed_today(db: Session = Depends(get_db),
+                         current_user: User = Depends(get_current_user)):
+    """งานที่ช่างส่งตรวจในวันนี้ (wo.completed_at >= today)"""
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    done_req_ids = (db.query(WorkOrder.request_id)
+                    .filter(WorkOrder.completed_at >= today_start,
+                            WorkOrder.completed_at.isnot(None))
+                    .subquery())
+    q = db.query(MaintenanceRequest).filter(
+        MaintenanceRequest.id.in_(done_req_ids),
+        MaintenanceRequest.status.in_(["pending_inspection", "completed"])
+    )
+    if current_user.role == "technician":
+        assigned_ids = (db.query(WorkOrder.request_id)
+                        .filter(WorkOrder.technician_id == current_user.id).subquery())
+        q = q.filter(MaintenanceRequest.id.in_(assigned_ids))
+    elif current_user.role == "staff":
+        from sqlalchemy.orm import aliased as _aliased
+        RA = _aliased(User)
+        q = (q.join(RA, MaintenanceRequest.reporter_id == RA.id)
+               .filter(RA.department == current_user.department))
+    return q.order_by(desc(MaintenanceRequest.created_at)).all()
+
+
 # ── Complete Work ─────────────────────────────────────
 
 @router.put("/{job_id}/complete", response_model=RequestOut)
@@ -481,6 +508,18 @@ def complete_work(job_id: int, data: WorkOrderComplete,
             [m.model_dump() for m in data.materials], ensure_ascii=False)
         total_cost = sum(m.qty * m.unit_cost for m in data.materials)
 
+    # บันทึก repair log entry (ไม่ทับของเก่า)
+    log = RepairLog(
+        work_order_id=wo.id,
+        repair_details=data.repair_details,
+        materials_used=materials_json,
+        total_cost=total_cost if total_cost > 0 else None,
+        is_complete=data.is_complete,
+        created_by_id=current_user.id,
+    )
+    db.add(log)
+
+    # อัปเดต work order fields (เก็บค่าล่าสุดไว้สำหรับ backward compat)
     wo.repair_details = data.repair_details
     wo.materials_used = materials_json
     wo.total_cost = total_cost if total_cost > 0 else None

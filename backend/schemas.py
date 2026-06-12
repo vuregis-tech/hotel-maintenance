@@ -161,6 +161,19 @@ class TransferBody(BaseModel):
     note: Optional[str] = None
 
 
+class RepairLogOut(BaseModel):
+    id: int
+    repair_details: str
+    materials_used: Optional[str] = None
+    total_cost: Optional[float] = None
+    is_complete: bool = False
+    created_at: datetime
+    created_by: Optional[UserOut] = None
+
+    class Config:
+        from_attributes = True
+
+
 class WorkOrderOut(BaseModel):
     id: int
     request_id: int
@@ -185,6 +198,7 @@ class WorkOrderOut(BaseModel):
     transferred_to: Optional[UserOut] = None
     transfer_note: Optional[str] = None
     co_assignments: List[CoAssignmentOut] = []
+    repair_logs: List[RepairLogOut] = []
 
     class Config:
         from_attributes = True

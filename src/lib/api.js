@@ -70,6 +70,7 @@ export const api = {
     return request('GET', `/api/jobs${qs ? `?${qs}` : ''}`)
   },
   getJob: (id) => request('GET', `/api/jobs/${id}`),
+  getCompletedToday: () => request('GET', '/api/jobs/completed-today'),
   createJob: (data) => request('POST', '/api/jobs', data),
   uploadImage: (id, file) => {
     const fd = new FormData()

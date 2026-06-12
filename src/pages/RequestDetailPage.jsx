@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, imgUrl } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { th } from 'date-fns/locale'
+import { th as thLocale, enUS } from 'date-fns/locale'
 import {
   ArrowLeft, Wrench, CheckCircle, XCircle, Plus, Trash2,
   History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, Edit2
@@ -178,6 +179,8 @@ function MaterialsTable({ materials, onChange }) {
 export default function RequestDetailPage() {
   const { id } = useParams()
   const { user } = useAuth()
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
   const navigate = useNavigate()
   const [job, setJob] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -307,6 +310,13 @@ export default function RequestDetailPage() {
 
   async function handleComplete() {
     if (!completeForm.repair_details.trim()) return toast.error('กรุณาระบุรายละเอียดการซ่อม')
+    if (completeForm.ooo_room) {
+      const today = new Date().toISOString().split('T')[0]
+      if (completeForm.ooo_start_date && completeForm.ooo_start_date < today)
+        return toast.error('วันที่เริ่มปิดห้องห้ามเป็นวันย้อนหลัง')
+      if (completeForm.ooo_end_date && completeForm.ooo_start_date && completeForm.ooo_end_date < completeForm.ooo_start_date)
+        return toast.error('วันที่เปิดคืนต้องไม่ก่อนวันที่เริ่มปิด')
+    }
     setActing(true)
     try {
       const updated = await api.completeJob(job.id, {
@@ -651,7 +661,30 @@ export default function RequestDetailPage() {
                 </div>
               </div>
             )}
-            {wo.repair_details && <InfoRow label="รายละเอียดการซ่อม" value={wo.repair_details} pre />}
+            {wo.repair_logs && wo.repair_logs.length > 0 ? (
+              <div>
+                <p className="text-sm text-gray-500 mb-2">{t('workOrder.repairLogs')}</p>
+                <div className="space-y-2">
+                  {wo.repair_logs.map((log, idx) => (
+                    <div key={log.id} className={`rounded-lg p-3 text-sm border-l-4 ${log.is_complete ? 'bg-green-50 border-green-400' : 'bg-blue-50 border-blue-400'}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-600">{t('workOrder.repairLog')}{idx + 1} · {log.created_by?.full_name}</span>
+                        <div className="flex items-center gap-1.5">
+                          {log.is_complete
+                            ? <span className="text-xs text-green-600 font-medium">✓ {t('workOrder.doneReady').split(' — ')[0]}</span>
+                            : <span className="text-xs text-blue-600 font-medium">⏳ {t('workOrder.inProgressSave').split(' — ')[0]}</span>
+                          }
+                          <span className="text-xs text-gray-400">{format(new Date(log.created_at), 'd MMM HH:mm', { locale: dateLocale })}</span>
+                        </div>
+                      </div>
+                      <p className="text-gray-700 whitespace-pre-wrap">{log.repair_details}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : wo.repair_details ? (
+              <InfoRow label={t('workOrder.repairDetails')} value={wo.repair_details} pre />
+            ) : null}
             {parsedMaterials.length > 0 && (
               <div className="flex gap-3">
                 <span className="text-sm text-gray-500 w-32 flex-shrink-0">อุปกรณ์</span>
@@ -824,14 +857,16 @@ export default function RequestDetailPage() {
               <div className="space-y-2 pl-1">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่มปิด</label>
+                    <label className="text-xs text-gray-500 mb-1 block">{t('workOrder.oooStart')}</label>
                     <input type="date" value={completeForm.ooo_start_date}
+                      min={new Date().toISOString().split('T')[0]}
                       onChange={e => setCompleteForm(f => ({ ...f, ooo_start_date: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">วันที่เปิดคืน</label>
+                    <label className="text-xs text-gray-500 mb-1 block">{t('workOrder.oooEnd')}</label>
                     <input type="date" value={completeForm.ooo_end_date}
+                      min={completeForm.ooo_start_date || new Date().toISOString().split('T')[0]}
                       onChange={e => setCompleteForm(f => ({ ...f, ooo_end_date: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>

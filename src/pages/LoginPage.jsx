@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Hotel, Eye, EyeOff, Wrench } from 'lucide-react'
+import { useLang } from '../context/LangContext'
+import { Hotel, Eye, EyeOff, Wrench, Languages } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { user, signIn, loading } = useAuth()
+  const { lang, setLang, t } = useLang()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')          // แสดง error ใต้ฟอร์ม
-  const [errorField, setErrorField] = useState('') // 'username' | 'password' | ''
+  const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
 
   if (!loading && user) return <Navigate to="/" replace />
 
@@ -49,15 +51,25 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl shadow-lg mb-4">
             <Wrench className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">ระบบแจ้งซ่อมโรงแรม</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('login.welcome')}</h1>
           <p className="text-gray-500 mt-1">Hotel Maintenance System</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-6">เข้าสู่ระบบ</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-800">{t('login.submit')}</h2>
+            <div className="flex items-center gap-1">
+              <Languages className="w-4 h-4 text-gray-400" />
+              {['th','en'].map(l => (
+                <button key={l} onClick={() => setLang(l)}
+                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${lang === l ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>
+                  {l === 'th' ? 'ไทย' : 'EN'}
+                </button>
+              ))}
+            </div>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-5">
 
-            {/* Error banner */}
             {error && (
               <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                 <span className="text-red-500 text-base mt-0.5">⚠️</span>
@@ -66,49 +78,38 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ชื่อผู้ใช้</label>
-              <input
-                type="text"
-                required
-                value={username}
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('auth.username')}</label>
+              <input type="text" required value={username}
                 onChange={e => { setUsername(e.target.value); setError(''); setErrorField('') }}
-                placeholder="username"
-                className={inputClass('username')}
-                autoComplete="username"
-                autoCapitalize="none"
-              />
+                placeholder={t('auth.usernamePlaceholder')}
+                className={inputClass('username')} autoComplete="username" autoCapitalize="none" />
               {errorField === 'username' && (
-                <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบชื่อผู้ใช้อีกครั้ง</p>
+                <p className="text-xs text-red-500 mt-1">{lang === 'th' ? 'กรุณาตรวจสอบชื่อผู้ใช้อีกครั้ง' : 'Please check your username'}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">รหัสผ่าน</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('auth.password')}</label>
               <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
+                <input type={showPassword ? 'text' : 'password'} required value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); setErrorField('') }}
                   placeholder="••••••••"
-                  className={`${inputClass('password')} pr-10`}
-                  autoComplete="current-password"
-                />
+                  className={`${inputClass('password')} pr-10`} autoComplete="current-password" />
                 <button type="button" onClick={() => setShowPassword(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {errorField === 'password' && (
-                <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบรหัสผ่านอีกครั้ง</p>
+                <p className="text-xs text-red-500 mt-1">{lang === 'th' ? 'กรุณาตรวจสอบรหัสผ่านอีกครั้ง' : 'Please check your password'}</p>
               )}
             </div>
 
             <button type="submit" disabled={submitting}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
               {submitting ? (
-                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />กำลังเข้าสู่ระบบ...</>
-              ) : 'เข้าสู่ระบบ'}
+                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{t('login.submitting')}</>
+              ) : t('login.submit')}
             </button>
           </form>
         </div>

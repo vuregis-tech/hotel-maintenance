@@ -175,6 +175,25 @@ class WorkOrder(Base):
     ooo_notified_user = relationship("User", foreign_keys=[ooo_notified_user_id],
                                      overlaps="technician,technician_orders,assigned_by,assigned_orders,transferred_to")
     co_assignments = relationship("CoAssignment", back_populates="work_order", cascade="all, delete-orphan")
+    repair_logs = relationship("RepairLog", back_populates="work_order",
+                               order_by="RepairLog.created_at", cascade="all, delete-orphan")
+
+
+class RepairLog(Base):
+    """บันทึกการซ่อมแบบ series — ไม่ทับของเก่า"""
+    __tablename__ = "repair_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False)
+    repair_details = Column(Text, nullable=False)
+    materials_used = Column(Text, nullable=True)  # JSON
+    total_cost = Column(Float, nullable=True)
+    is_complete = Column(Boolean, default=False)  # True = ส่งตรวจแล้ว
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    work_order = relationship("WorkOrder", back_populates="repair_logs")
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class CoAssignment(Base):
