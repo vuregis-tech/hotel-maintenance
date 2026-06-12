@@ -43,6 +43,7 @@ export const api = {
 
   // Users
   getUsers: () => request('GET', '/api/users'),
+  getOOONotifyUsers: () => request('GET', '/api/users/ooo-notify'),
   getTechnicians: () => request('GET', '/api/users/technicians'),
   createUser: (data) => request('POST', '/api/users', data),
   updateUser: (id, data) => request('PUT', `/api/users/${id}`, data),

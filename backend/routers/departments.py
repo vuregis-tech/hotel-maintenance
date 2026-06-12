@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models import Department
-from ..schemas import DepartmentCreate, DepartmentOut
+from ..schemas import DepartmentCreate, DepartmentUpdate, DepartmentOut
 from ..auth import get_current_user, require_roles
 from ..models import User
 
@@ -22,7 +22,7 @@ def create_department(data: DepartmentCreate,
                       current_user: User = Depends(require_roles("admin"))):
     if db.query(Department).filter(Department.name == data.name.strip()).first():
         raise HTTPException(status_code=400, detail="ชื่อแผนกซ้ำ")
-    dept = Department(name=data.name.strip())
+    dept = Department(name=data.name.strip(), show_in_ooo=data.show_in_ooo)
     db.add(dept)
     db.commit()
     db.refresh(dept)
@@ -30,13 +30,16 @@ def create_department(data: DepartmentCreate,
 
 
 @router.put("/{dept_id}", response_model=DepartmentOut)
-def update_department(dept_id: int, data: DepartmentCreate,
+def update_department(dept_id: int, data: DepartmentUpdate,
                       db: Session = Depends(get_db),
                       current_user: User = Depends(require_roles("admin"))):
     dept = db.query(Department).filter(Department.id == dept_id).first()
     if not dept:
         raise HTTPException(status_code=404, detail="ไม่พบแผนก")
-    dept.name = data.name.strip()
+    if data.name is not None and data.name.strip():
+        dept.name = data.name.strip()
+    if data.show_in_ooo is not None:
+        dept.show_in_ooo = data.show_in_ooo
     db.commit()
     db.refresh(dept)
     return dept

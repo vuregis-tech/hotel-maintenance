@@ -118,6 +118,7 @@ class Department(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, unique=True)
     is_active = Column(Boolean, default=True)
+    show_in_ooo = Column(Boolean, default=False)  # แสดงชื่อ user ใน dropdown ผู้รับแจ้งตอนปิด OOO
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

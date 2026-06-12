@@ -103,6 +103,8 @@ def run_migrations():
         ("work_orders", "ooo_start_date", "VARCHAR(10)"),
         ("work_orders", "ooo_end_date", "VARCHAR(10)"),
         ("work_orders", "ooo_notified_user_id", "INTEGER"),
+        # Feature 6: แผนกที่แสดงชื่อใน dropdown ผู้รับแจ้ง OOO
+        ("departments", "show_in_ooo", "BOOLEAN DEFAULT FALSE"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:

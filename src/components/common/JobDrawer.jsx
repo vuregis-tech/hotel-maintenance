@@ -229,7 +229,7 @@ export default function JobDrawer({ jobId, onClose }) {
         .catch(() => setOnDutyTechs([]))
     }
     if (modal === 'complete' && allUsers.length === 0) {
-      api.getUsers().then(setAllUsers)
+      api.getOOONotifyUsers().then(setAllUsers).catch(() => setAllUsers([]))
     }
     if (modal === 'edit') {
       if (issueTypes.length === 0) api.getIssueTypes().then(setIssueTypes)
@@ -842,10 +842,15 @@ export default function JobDrawer({ jobId, onClose }) {
                     onChange={e => setCompleteForm(f => ({ ...f, ooo_notified_user_id: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
                     <option value="">-- เลือกผู้รับแจ้ง --</option>
-                    {allUsers.filter(u => /housemate|front/i.test(u.department)).map(u => (
+                    {allUsers.map(u => (
                       <option key={u.id} value={u.id}>{u.full_name} ({u.department})</option>
                     ))}
                   </select>
+                  {allUsers.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      * ยังไม่มีแผนกที่เปิด "แสดงชื่อตอนปิด OOO" — ตั้งค่าได้ที่ จัดการระบบ → แผนก
+                    </p>
+                  )}
                 </div>
               </div>
             )}

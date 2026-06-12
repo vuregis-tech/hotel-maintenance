@@ -75,6 +75,14 @@ function DepartmentsTab() {
     toast.success('แก้ไขสำเร็จ')
   }
 
+  async function toggleOOO(id, checked) {
+    try {
+      await api.updateDepartment(id, { show_in_ooo: checked })
+      setDepts(d => d.map(x => x.id === id ? { ...x, show_in_ooo: checked } : x))
+      toast.success(checked ? 'เปิดแสดงชื่อตอนปิด OOO' : 'ปิดแสดงชื่อตอนปิด OOO')
+    } catch (err) { toast.error(err.message) }
+  }
+
   return (
     <div>
       <h2 className="font-semibold text-gray-900 mb-4">จัดการแผนก</h2>
@@ -91,7 +99,14 @@ function DepartmentsTab() {
         {depts.length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">ยังไม่มีแผนก</p>}
         {depts.map(d => (
           <div key={d.id} className="px-4">
-            <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)} />
+            <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)}>
+              <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs text-gray-500">
+                <input type="checkbox" checked={!!d.show_in_ooo}
+                  onChange={e => toggleOOO(d.id, e.target.checked)}
+                  className="w-3.5 h-3.5 text-blue-600 rounded" />
+                แสดงชื่อตอนปิด OOO
+              </label>
+            </EditableItem>
           </div>
         ))}
       </div>

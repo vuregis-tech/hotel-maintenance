@@ -191,12 +191,19 @@ class WorkOrderOut(BaseModel):
 # ── Departments ───────────────────────────────────────
 class DepartmentCreate(BaseModel):
     name: str
+    show_in_ooo: bool = False
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = None
+    show_in_ooo: Optional[bool] = None
 
 
 class DepartmentOut(BaseModel):
     id: int
     name: str
     is_active: bool
+    show_in_ooo: Optional[bool] = False
 
     class Config:
         from_attributes = True

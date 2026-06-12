@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
-from ..models import User
+from ..models import User, Department
 from ..schemas import UserCreate, UserUpdate, UserOut
 from ..auth import get_current_user, hash_password, require_roles
 
@@ -19,6 +19,17 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(requi
 @router.get("/technicians", response_model=List[UserOut])
 def list_technicians(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(User).filter(User.role == "technician", User.is_active == True).order_by(User.full_name).all()
+
+
+@router.get("/ooo-notify", response_model=List[UserOut])
+def list_ooo_notify_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """User ในแผนกที่ติ๊ก 'แสดงชื่อตอนปิด OOO' — ใช้ใน dropdown ผู้รับแจ้ง"""
+    dept_names = [d.name for d in db.query(Department).filter(
+        Department.show_in_ooo == True, Department.is_active == True).all()]
+    if not dept_names:
+        return []
+    return db.query(User).filter(
+        User.department.in_(dept_names), User.is_active == True).order_by(User.full_name).all()
 
 
 @router.post("", response_model=UserOut)
