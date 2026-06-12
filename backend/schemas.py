@@ -136,6 +136,8 @@ class WorkOrderComplete(BaseModel):
     # if True → external technician needed
     is_external: bool = False
     external_note: Optional[str] = None
+    # False = บันทึกระหว่างทำ (คงสถานะ in_progress), True = เสร็จแล้วพร้อมส่งตรวจ
+    is_complete: bool = True
 
 
 class WorkOrderReassign(BaseModel):

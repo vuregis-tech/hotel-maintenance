@@ -489,9 +489,22 @@ def complete_work(job_id: int, data: WorkOrderComplete,
     wo.ooo_start_date = data.ooo_start_date
     wo.ooo_end_date = data.ooo_end_date
     wo.ooo_notified_user_id = data.ooo_notified_user_id
-    wo.completed_at = datetime.now()
 
     old_status = req.status
+
+    if not data.is_complete:
+        # บันทึกระหว่างทำ — เก็บข้อมูลแต่ยังไม่ส่งตรวจ
+        wo.is_external = data.is_external
+        wo.external_note = data.external_note if data.is_external else None
+        wo.status = "in_progress"
+        if req.status not in ("in_progress",):
+            req.status = "in_progress"
+            add_history(db, job_id, old_status, "in_progress", current_user.id, "บันทึกระหว่างทำ")
+        db.commit()
+        return get_req(db, job_id)
+
+    wo.completed_at = datetime.now()
+
     if data.is_external:
         wo.is_external = True
         wo.external_note = data.external_note

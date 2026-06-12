@@ -203,7 +203,7 @@ export default function RequestDetailPage() {
   const [completeForm, setCompleteForm] = useState({
     repair_details: '', materials: [], ooo_room: false,
     ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
-    is_external: false, external_note: ''
+    is_external: false, external_note: '', is_complete: true
   })
 
   // Edit
@@ -318,9 +318,12 @@ export default function RequestDetailPage() {
         ooo_notified_user_id: completeForm.ooo_notified_user_id ? Number(completeForm.ooo_notified_user_id) : null,
         is_external: completeForm.is_external,
         external_note: completeForm.is_external ? completeForm.external_note : null,
+        is_complete: completeForm.is_complete,
       })
       setJob(updated); setModal(null)
-      toast.success(completeForm.is_external ? 'บันทึก: รอช่างภายนอก' : 'บันทึกการซ่อมสำเร็จ')
+      if (!completeForm.is_complete) toast.success('บันทึกระหว่างทำแล้ว')
+      else if (completeForm.is_external) toast.success('บันทึก: รอช่างภายนอก')
+      else toast.success('บันทึกการซ่อมสำเร็จ — รอตรวจ')
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
   }
@@ -834,11 +837,11 @@ export default function RequestDetailPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">แจ้ง Housemate/Front</label>
+                  <label className="text-xs text-gray-500 mb-1 block">ผู้อนุมัติปิดห้อง</label>
                   <select value={completeForm.ooo_notified_user_id}
                     onChange={e => setCompleteForm(f => ({ ...f, ooo_notified_user_id: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">-- เลือกผู้รับแจ้ง --</option>
+                    <option value="">-- เลือกผู้อนุมัติ --</option>
                     {allUsers.map(u => (
                       <option key={u.id} value={u.id}>{u.full_name} ({u.department})</option>
                     ))}
@@ -869,15 +872,47 @@ export default function RequestDetailPage() {
                   className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white" />
               )}
             </div>
+
+            {/* สถานะงาน */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-200">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">สถานะงาน</span>
+              </div>
+              <div className="divide-y divide-gray-100">
+                <label className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${completeForm.is_complete ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                  <input type="radio" name="job_complete_status" checked={completeForm.is_complete}
+                    onChange={() => setCompleteForm(f => ({ ...f, is_complete: true }))}
+                    className="w-4 h-4 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-green-700">เสร็จแล้ว — พร้อมส่งตรวจ</p>
+                    <p className="text-xs text-gray-400">งานเสร็จสมบูรณ์ ส่งให้หัวหน้าตรวจรับ</p>
+                  </div>
+                </label>
+                <label className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${!completeForm.is_complete ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                  <input type="radio" name="job_complete_status" checked={!completeForm.is_complete}
+                    onChange={() => setCompleteForm(f => ({ ...f, is_complete: false }))}
+                    className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-700">กำลังดำเนินการอยู่ — บันทึกระหว่างทำ</p>
+                    <p className="text-xs text-gray-400">บันทึกความคืบหน้าไว้ก่อน ยังไม่ส่งตรวจ</p>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2 mt-4">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={handleComplete} disabled={acting}
               className={`flex-1 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium ${
-                completeForm.is_external ? 'bg-purple-600 hover:bg-purple-700' : 'bg-green-600 hover:bg-green-700'
+                !completeForm.is_complete ? 'bg-blue-600 hover:bg-blue-700'
+                : completeForm.is_external ? 'bg-purple-600 hover:bg-purple-700'
+                : 'bg-green-600 hover:bg-green-700'
               }`}>
-              {acting ? 'กำลังบันทึก...' : completeForm.is_external ? 'ส่งให้หัวหน้าช่าง' : 'ยืนยัน'}
+              {acting ? 'กำลังบันทึก...'
+                : !completeForm.is_complete ? 'บันทึกระหว่างทำ'
+                : completeForm.is_external ? 'ส่งให้หัวหน้าช่าง'
+                : 'ยืนยัน — ส่งตรวจ'}
             </button>
           </div>
         </Modal>
