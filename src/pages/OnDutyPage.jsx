@@ -1,21 +1,51 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+// ── TechCheckBox — อยู่นอก component หลักเพื่อป้องกัน React remount ──────
+function TechCheckBox({ technicians, alreadyOnDuty, selectedTechs, setSelectedTechs }) {
+  const available = technicians.filter(t => !alreadyOnDuty.includes(t.id))
+  const toggle = (id) => {
+    const sid = String(id)
+    setSelectedTechs(prev => prev.includes(sid) ? prev.filter(x => x !== sid) : [...prev, sid])
+  }
+  if (available.length === 0) {
+    return <p className="text-sm text-gray-400 py-2">ช่างทุกคน On Duty วันนี้แล้ว</p>
+  }
+  return (
+    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden max-h-60 overflow-y-auto">
+      {available.map(t => {
+        const checked = selectedTechs.includes(String(t.id))
+        return (
+          <label key={t.id}
+            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${checked ? 'bg-blue-50' : ''}`}>
+            <input type="checkbox" checked={checked} onChange={() => toggle(t.id)}
+              className="w-4 h-4 text-blue-600 rounded flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+              <span className="text-xs text-gray-500 ml-1.5">({t.department})</span>
+            </div>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function OnDutyPage() {
   const { user } = useAuth()
   const isSuperAdmin = ['admin', 'supervisor'].includes(user?.role)
 
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [schedules, setSchedules] = useState([])   // [{id, technician, duty_date, ...}]
+  const [schedules, setSchedules] = useState([])
   const [technicians, setTechnicians] = useState([])
-  const [selectedDay, setSelectedDay] = useState(null)   // Date object
+  const [selectedDay, setSelectedDay] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [selectedTech, setSelectedTech] = useState('')
+  const [selectedTechs, setSelectedTechs] = useState([])  // multi-select
   const [saving, setSaving] = useState(false)
 
   const year = currentDate.getFullYear()
@@ -40,23 +70,39 @@ export default function OnDutyPage() {
   function openAdd(day) {
     if (!isSuperAdmin) return
     setSelectedDay(day)
-    setSelectedTech('')
+    setSelectedTechs([])
     setShowAddModal(true)
   }
 
   async function handleAdd() {
-    if (!selectedTech) return toast.error('กรุณาเลือกช่าง')
+    if (selectedTechs.length === 0) return toast.error('กรุณาเลือกช่างอย่างน้อย 1 คน')
     setSaving(true)
     try {
-      const record = await api.setOnDuty({
-        technician_id: Number(selectedTech),
-        duty_date: format(selectedDay, 'yyyy-MM-dd'),
-      })
-      setSchedules(s => [...s, record])
+      const dateStr = format(selectedDay, 'yyyy-MM-dd')
+      const results = await Promise.all(
+        selectedTechs.map(techId =>
+          api.setOnDuty({ technician_id: Number(techId), duty_date: dateStr })
+            .catch(err => ({ _error: err.message }))
+        )
+      )
+      const successes = results.filter(r => !r._error)
+      const errors = results.filter(r => r._error)
+
+      if (successes.length > 0) {
+        setSchedules(s => [...s, ...successes])
+      }
+      if (errors.length > 0) {
+        toast.error(`เพิ่มไม่ได้ ${errors.length} คน (อาจมี On Duty อยู่แล้ว)`)
+      }
+      if (successes.length > 0) {
+        toast.success(`เพิ่ม On Duty ${successes.length} คนสำเร็จ`)
+      }
       setShowAddModal(false)
-      toast.success('เพิ่ม On Duty สำเร็จ')
-    } catch (err) { toast.error(err.message) }
-    finally { setSaving(false) }
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleRemove(id) {
@@ -68,6 +114,11 @@ export default function OnDutyPage() {
   }
 
   const DAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+
+  // ช่างที่มี On Duty วันที่เลือกอยู่แล้ว
+  const alreadyOnDutyIds = selectedDay
+    ? getDaySchedules(selectedDay).map(s => s.technician?.id).filter(Boolean)
+    : []
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -168,28 +219,39 @@ export default function OnDutyPage() {
       {showAddModal && selectedDay && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <h3 className="font-semibold text-gray-900 mb-1">เพิ่ม On Duty</h3>
+            <h3 className="font-semibold text-gray-900 mb-0.5">เพิ่ม On Duty</h3>
             <p className="text-sm text-gray-500 mb-4">
               {format(selectedDay, 'EEEE d MMMM yyyy', { locale: th })}
             </p>
+
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-1 block">เลือกช่าง</label>
-              <select value={selectedTech} onChange={e => setSelectedTech(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">-- เลือกช่าง --</option>
-                {technicians.map(t => (
-                  <option key={t.id} value={t.id}>{t.full_name} ({t.department})</option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">เลือกช่าง</label>
+                {selectedTechs.length > 0 && (
+                  <span className="text-xs text-blue-600 font-medium">เลือกแล้ว {selectedTechs.length} คน</span>
+                )}
+              </div>
+              <TechCheckBox
+                technicians={technicians}
+                alreadyOnDuty={alreadyOnDutyIds}
+                selectedTechs={selectedTechs}
+                setSelectedTechs={setSelectedTechs}
+              />
+              {alreadyOnDutyIds.length > 0 && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  * ช่างที่มี On Duty วันนี้แล้วจะไม่แสดง
+                </p>
+              )}
             </div>
+
             <div className="flex gap-2">
               <button onClick={() => setShowAddModal(false)}
                 className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">
                 ยกเลิก
               </button>
-              <button onClick={handleAdd} disabled={saving}
+              <button onClick={handleAdd} disabled={saving || selectedTechs.length === 0}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
-                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                {saving ? 'กำลังบันทึก...' : `บันทึก${selectedTechs.length > 0 ? ` (${selectedTechs.length} คน)` : ''}`}
               </button>
             </div>
           </div>
