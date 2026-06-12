@@ -143,7 +143,8 @@ export default function JobDrawer({ jobId, onClose }) {
 
   // inner modal state
   const [modal, setModal] = useState(null)
-  const [selectedTech, setSelectedTech] = useState('')
+  const [selectedTech, setSelectedTech] = useState('')   // single-select
+  const [selectedTechs, setSelectedTechs] = useState([]) // multi-select
   const [acting, setActing] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [transferNote, setTransferNote] = useState('')
@@ -199,11 +200,38 @@ export default function JobDrawer({ jobId, onClose }) {
     setActing(true)
     try {
       let updated
-      if (type === 'assign') updated = await api.assignJob(job.id, Number(selectedTech))
-      else if (type === 'reassign') updated = await api.reassignJob(job.id, Number(selectedTech))
+      if (type === 'reassign') updated = await api.reassignJob(job.id, Number(selectedTech))
       else updated = await api.coAssignJob(job.id, Number(selectedTech))
       setJob(updated); setModal(null); setSelectedTech('')
-      toast.success({ assign: 'จ่ายงานสำเร็จ', reassign: 'เปลี่ยนช่างสำเร็จ', coassign: 'เพิ่มช่างร่วมสำเร็จ' }[type])
+      toast.success({ reassign: 'เปลี่ยนช่างสำเร็จ', coassign: 'เพิ่มช่างร่วมสำเร็จ' }[type])
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleAssignMulti() {
+    if (selectedTechs.length === 0) return toast.error('กรุณาเลือกช่างอย่างน้อย 1 คน')
+    setActing(true)
+    try {
+      let updated = await api.assignJob(job.id, Number(selectedTechs[0]))
+      for (let i = 1; i < selectedTechs.length; i++) {
+        updated = await api.coAssignJob(job.id, Number(selectedTechs[i]))
+      }
+      setJob(updated); setModal(null); setSelectedTechs([])
+      toast.success(`จ่ายงานสำเร็จ${selectedTechs.length > 1 ? ` (${selectedTechs.length} คน)` : ''}`)
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleCoAssignMulti() {
+    if (selectedTechs.length === 0) return toast.error('กรุณาเลือกช่างอย่างน้อย 1 คน')
+    setActing(true)
+    try {
+      let updated = job
+      for (const techId of selectedTechs) {
+        updated = await api.coAssignJob(job.id, Number(techId))
+      }
+      setJob(updated); setModal(null); setSelectedTechs([])
+      toast.success(`เพิ่มช่างร่วม ${selectedTechs.length} คนสำเร็จ`)
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
   }
@@ -373,14 +401,25 @@ export default function JobDrawer({ jobId, onClose }) {
     try { parsedMaterials = JSON.parse(wo.materials_used) } catch { }
   }
 
-  // Checkbox list for tech selection (on-duty first)
-  const TechCheckList = () => {
-    const onDutyList = technicians.filter(t => onDutyTechs.includes(t.id))
-    const offDutyList = technicians.filter(t => !onDutyTechs.includes(t.id))
+  // Checkbox list — multi=true: เลือกหลายคนได้, multi=false: เลือกคนเดียว
+  const TechCheckList = ({ multi = false, excludeId = null }) => {
+    const list = technicians.filter(t => t.id !== excludeId)
+    const onDutyList = list.filter(t => onDutyTechs.includes(t.id))
+    const offDutyList = list.filter(t => !onDutyTechs.includes(t.id))
+    const isChecked = (t) => multi
+      ? selectedTechs.includes(String(t.id))
+      : selectedTech === String(t.id)
+    const toggle = (t) => {
+      if (multi) {
+        const id = String(t.id)
+        setSelectedTechs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+      } else {
+        setSelectedTech(prev => prev === String(t.id) ? '' : String(t.id))
+      }
+    }
     const renderTech = (t) => (
-      <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${selectedTech === String(t.id) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
-        <input type="checkbox" checked={selectedTech === String(t.id)}
-          onChange={() => setSelectedTech(selectedTech === String(t.id) ? '' : String(t.id))}
+      <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isChecked(t) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
+        <input type="checkbox" checked={isChecked(t)} onChange={() => toggle(t)}
           className="w-4 h-4 text-blue-600 rounded" />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
@@ -392,20 +431,20 @@ export default function JobDrawer({ jobId, onClose }) {
       </label>
     )
     return (
-      <div className="mb-4 max-h-52 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+      <div className="mb-3 border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
         {onDutyList.length > 0 && (
           <>
-            <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700 sticky top-0">🟢 On Duty วันนี้</div>
-            {onDutyList.map(renderTech)}
+            <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700">🟢 On Duty วันนี้</div>
+            <div className="max-h-40 overflow-y-auto">{onDutyList.map(renderTech)}</div>
           </>
         )}
         {offDutyList.length > 0 && (
           <>
-            {onDutyList.length > 0 && <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 sticky top-0">ช่างทั้งหมด</div>}
-            {offDutyList.map(renderTech)}
+            <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500">ช่างทั้งหมด</div>
+            <div className="max-h-40 overflow-y-auto">{offDutyList.map(renderTech)}</div>
           </>
         )}
-        {technicians.length === 0 && (
+        {list.length === 0 && (
           <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>
         )}
       </div>
@@ -475,7 +514,7 @@ export default function JobDrawer({ jobId, onClose }) {
                 canInspect || canCancel || canReject || canTransfer || canSelfAssign || canEdit) && (
                 <div className="flex flex-wrap gap-2">
                   {canAssign && (
-                    <button onClick={() => { setSelectedTech(''); setModal('assign') }}
+                    <button onClick={() => { setSelectedTechs([]); setModal('assign') }}
                       className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium">
                       <Wrench className="w-4 h-4" /> จ่ายงาน
                     </button>
@@ -487,7 +526,7 @@ export default function JobDrawer({ jobId, onClose }) {
                     </button>
                   )}
                   {canCoAssign && (
-                    <button onClick={() => { setSelectedTech(''); setModal('coassign') }}
+                    <button onClick={() => { setSelectedTechs([]); setModal('coassign') }}
                       className="flex items-center gap-1.5 border border-indigo-300 text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg text-sm font-medium">
                       <UserPlus className="w-4 h-4" /> เพิ่มช่างร่วม
                     </button>
@@ -713,12 +752,18 @@ export default function JobDrawer({ jobId, onClose }) {
 
       {modal === 'assign' && (
         <InnerModal title="จ่ายงานให้ช่าง" onClose={() => setModal(null)}>
-          <TechCheckList />
+          {selectedTechs.length > 0 && (
+            <p className="text-xs text-blue-600 font-medium mb-2">
+              เลือกแล้ว {selectedTechs.length} คน
+              {selectedTechs.length > 1 && ' (คนแรก = ช่างหลัก, ที่เหลือ = ช่างร่วม)'}
+            </p>
+          )}
+          <TechCheckList multi={true} />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
-            <button onClick={() => handleAssign('assign')} disabled={acting}
+            <button onClick={handleAssignMulti} disabled={acting || selectedTechs.length === 0}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
-              {acting ? 'กำลังบันทึก...' : 'จ่ายงาน'}
+              {acting ? 'กำลังบันทึก...' : `จ่ายงาน${selectedTechs.length > 0 ? ` (${selectedTechs.length} คน)` : ''}`}
             </button>
           </div>
         </InnerModal>
@@ -739,12 +784,15 @@ export default function JobDrawer({ jobId, onClose }) {
 
       {modal === 'coassign' && (
         <InnerModal title="เพิ่มช่างร่วมปฏิบัติงาน" onClose={() => setModal(null)}>
-          <TechCheckList />
+          {selectedTechs.length > 0 && (
+            <p className="text-xs text-indigo-600 font-medium mb-2">เลือกแล้ว {selectedTechs.length} คน</p>
+          )}
+          <TechCheckList multi={true} excludeId={wo?.technician?.id} />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
-            <button onClick={() => handleAssign('coassign')} disabled={acting}
+            <button onClick={handleCoAssignMulti} disabled={acting || selectedTechs.length === 0}
               className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
-              {acting ? 'กำลังบันทึก...' : 'เพิ่มช่างร่วม'}
+              {acting ? 'กำลังบันทึก...' : `เพิ่มช่างร่วม${selectedTechs.length > 0 ? ` (${selectedTechs.length} คน)` : ''}`}
             </button>
           </div>
         </InnerModal>
