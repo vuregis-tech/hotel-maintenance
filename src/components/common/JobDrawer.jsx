@@ -11,6 +11,56 @@ import {
   History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2
 } from 'lucide-react'
 
+// ── TechCheckList — อยู่นอก component หลักเพื่อป้องกัน React remount ──────
+function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null }) {
+  const list = technicians.filter(t => t.id !== excludeId)
+  const onDutyList = list.filter(t => onDutyTechs.includes(t.id))
+  const offDutyList = list.filter(t => !onDutyTechs.includes(t.id))
+  const isChecked = (t) => multi
+    ? selectedTechs.includes(String(t.id))
+    : selectedTech === String(t.id)
+  const toggle = (t) => {
+    if (multi) {
+      const id = String(t.id)
+      setSelectedTechs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    } else {
+      setSelectedTech(prev => prev === String(t.id) ? '' : String(t.id))
+    }
+  }
+  const renderTech = (t) => (
+    <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isChecked(t) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
+      <input type="checkbox" checked={isChecked(t)} onChange={() => toggle(t)}
+        className="w-4 h-4 text-blue-600 rounded" />
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+        <span className="text-xs text-gray-500 ml-1">({t.department})</span>
+      </div>
+      {onDutyTechs.includes(t.id) && (
+        <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">🟢 On Duty</span>
+      )}
+    </label>
+  )
+  return (
+    <div className="mb-3 border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
+      {onDutyList.length > 0 && (
+        <>
+          <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700">🟢 On Duty วันนี้</div>
+          <div className="max-h-40 overflow-y-auto">{onDutyList.map(renderTech)}</div>
+        </>
+      )}
+      {offDutyList.length > 0 && (
+        <>
+          <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500">ช่างทั้งหมด</div>
+          <div className="max-h-40 overflow-y-auto">{offDutyList.map(renderTech)}</div>
+        </>
+      )}
+      {list.length === 0 && (
+        <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>
+      )}
+    </div>
+  )
+}
+
 // ── Sub-components ──────────────────────────────────────
 
 function SafeImage({ src, className }) {
@@ -401,55 +451,8 @@ export default function JobDrawer({ jobId, onClose }) {
     try { parsedMaterials = JSON.parse(wo.materials_used) } catch { }
   }
 
-  // Checkbox list — multi=true: เลือกหลายคนได้, multi=false: เลือกคนเดียว
-  const TechCheckList = ({ multi = false, excludeId = null }) => {
-    const list = technicians.filter(t => t.id !== excludeId)
-    const onDutyList = list.filter(t => onDutyTechs.includes(t.id))
-    const offDutyList = list.filter(t => !onDutyTechs.includes(t.id))
-    const isChecked = (t) => multi
-      ? selectedTechs.includes(String(t.id))
-      : selectedTech === String(t.id)
-    const toggle = (t) => {
-      if (multi) {
-        const id = String(t.id)
-        setSelectedTechs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-      } else {
-        setSelectedTech(prev => prev === String(t.id) ? '' : String(t.id))
-      }
-    }
-    const renderTech = (t) => (
-      <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isChecked(t) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
-        <input type="checkbox" checked={isChecked(t)} onChange={() => toggle(t)}
-          className="w-4 h-4 text-blue-600 rounded" />
-        <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
-          <span className="text-xs text-gray-500 ml-1">({t.department})</span>
-        </div>
-        {onDutyTechs.includes(t.id) && (
-          <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">🟢 On Duty</span>
-        )}
-      </label>
-    )
-    return (
-      <div className="mb-3 border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
-        {onDutyList.length > 0 && (
-          <>
-            <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700">🟢 On Duty วันนี้</div>
-            <div className="max-h-40 overflow-y-auto">{onDutyList.map(renderTech)}</div>
-          </>
-        )}
-        {offDutyList.length > 0 && (
-          <>
-            <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500">ช่างทั้งหมด</div>
-            <div className="max-h-40 overflow-y-auto">{offDutyList.map(renderTech)}</div>
-          </>
-        )}
-        {list.length === 0 && (
-          <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>
-        )}
-      </div>
-    )
-  }
+  // shorthand props ส่งให้ TechCheckList
+  const techListProps = { technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs }
 
   return (
     <>
@@ -758,7 +761,7 @@ export default function JobDrawer({ jobId, onClose }) {
               {selectedTechs.length > 1 && ' (คนแรก = ช่างหลัก, ที่เหลือ = ช่างร่วม)'}
             </p>
           )}
-          <TechCheckList multi={true} />
+          <TechCheckList {...techListProps} multi={true} />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={handleAssignMulti} disabled={acting || selectedTechs.length === 0}
@@ -787,7 +790,7 @@ export default function JobDrawer({ jobId, onClose }) {
           {selectedTechs.length > 0 && (
             <p className="text-xs text-indigo-600 font-medium mb-2">เลือกแล้ว {selectedTechs.length} คน</p>
           )}
-          <TechCheckList multi={true} excludeId={wo?.technician?.id} />
+          <TechCheckList {...techListProps} multi={true} excludeId={wo?.technician?.id} />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={handleCoAssignMulti} disabled={acting || selectedTechs.length === 0}
