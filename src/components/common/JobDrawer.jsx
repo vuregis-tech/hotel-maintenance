@@ -154,7 +154,9 @@ export default function JobDrawer({ jobId, onClose }) {
   })
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
   const [editForm, setEditForm] = useState({
-    description: '', issue_type_id: '', priority: 'normal', scheduled_at: '', guest_inhouse: false
+    description: '', issue_type_id: '', priority: 'normal',
+    sched_date: '', sched_hour: '08', sched_minute: '00',
+    guest_inhouse: false
   })
   const [locationHistory, setLocationHistory] = useState([])
   const [histLoading, setHistLoading] = useState(false)
@@ -170,10 +172,10 @@ export default function JobDrawer({ jobId, onClose }) {
   // โหลดช่างเมื่อเปิด modal ที่ต้องเลือกช่าง
   useEffect(() => {
     if (['assign', 'reassign', 'coassign', 'recall', 'transfer'].includes(modal) && technicians.length === 0) {
-      Promise.all([api.getTechnicians(), api.getOnDutyToday()]).then(([techs, duty]) => {
-        setTechnicians(techs)
-        setOnDutyTechs(duty.map ? duty.map(d => d.technician_id || d.technician?.id) : [])
-      })
+      api.getTechnicians().then(setTechnicians).catch(() => {})
+      api.getOnDutyToday()
+        .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
+        .catch(() => setOnDutyTechs([]))
     }
     if (modal === 'complete' && allUsers.length === 0) {
       api.getUsers().then(setAllUsers)
@@ -243,7 +245,9 @@ export default function JobDrawer({ jobId, onClose }) {
       if (editForm.description) payload.description = editForm.description
       if (editForm.issue_type_id) payload.issue_type_id = editForm.issue_type_id !== 'other' ? Number(editForm.issue_type_id) : null
       if (editForm.priority) payload.priority = editForm.priority
-      if (editForm.scheduled_at !== undefined) payload.scheduled_at = editForm.scheduled_at || null
+      payload.scheduled_at = editForm.sched_date
+        ? `${editForm.sched_date}T${editForm.sched_hour}:${editForm.sched_minute}:00`
+        : null
       payload.guest_inhouse = editForm.guest_inhouse
       const updated = await api.editJob(job.id, payload)
       setJob(updated); setModal(null)
@@ -536,7 +540,9 @@ export default function JobDrawer({ jobId, onClose }) {
                         description: job.description || '',
                         issue_type_id: job.issue_type?.id ? String(job.issue_type.id) : '',
                         priority: job.priority || 'normal',
-                        scheduled_at: job.scheduled_at ? job.scheduled_at.slice(0, 16) : '',
+                        sched_date: job.scheduled_at ? job.scheduled_at.slice(0, 10) : '',
+                        sched_hour: job.scheduled_at ? job.scheduled_at.slice(11, 13) : '08',
+                        sched_minute: job.scheduled_at ? job.scheduled_at.slice(14, 16) : '00',
                         guest_inhouse: job.guest_inhouse || false,
                       })
                       setModal('edit')
@@ -1064,9 +1070,31 @@ export default function JobDrawer({ jobId, onClose }) {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">เวลาที่ต้องการให้ซ่อม</label>
-              <input type="datetime-local" value={editForm.scheduled_at}
-                onChange={e => setEditForm(f => ({ ...f, scheduled_at: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="flex gap-2">
+                <input type="date" value={editForm.sched_date}
+                  onChange={e => setEditForm(f => ({ ...f, sched_date: e.target.value }))}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <select value={editForm.sched_hour}
+                  onChange={e => setEditForm(f => ({ ...f, sched_hour: e.target.value }))}
+                  disabled={!editForm.sched_date}
+                  className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none disabled:opacity-40">
+                  {Array.from({length: 24}, (_, i) => String(i).padStart(2,'0')).map(h => (
+                    <option key={h} value={h}>{h} น.</option>
+                  ))}
+                </select>
+                <select value={editForm.sched_minute}
+                  onChange={e => setEditForm(f => ({ ...f, sched_minute: e.target.value }))}
+                  disabled={!editForm.sched_date}
+                  className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none disabled:opacity-40">
+                  {['00','15','30','45'].map(m => (
+                    <option key={m} value={m}>{m} น.</option>
+                  ))}
+                </select>
+              </div>
+              {editForm.sched_date && (
+                <button type="button" onClick={() => setEditForm(f => ({ ...f, sched_date: '' }))}
+                  className="mt-1 text-xs text-gray-400 hover:text-red-500">ล้างเวลา</button>
+              )}
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={editForm.guest_inhouse}

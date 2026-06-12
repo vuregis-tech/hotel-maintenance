@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight, Wrench, DoorClosed, X } from 'lucide-react'
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight, Wrench, DoorClosed, X, Zap } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -13,7 +13,8 @@ const FILTERS = {
   pending:     { label: 'รอรับงาน',         match: j => j.status === 'pending' },
   inProgress:  { label: 'กำลังดำเนินการ',   match: j => ['assigned', 'in_progress'].includes(j.status) },
   inspection:  { label: 'รอตรวจ',           match: j => j.status === 'pending_inspection' },
-  urgent:      { label: 'งานด่วน',          match: j => j.is_urgent && !['completed', 'cancelled'].includes(j.status) },
+  veryUrgent:  { label: 'ด่วนมาก 🚨',       match: j => j.priority === 'very_urgent' && !['completed','cancelled'].includes(j.status) },
+  urgent:      { label: 'งานด่วน 🔴',       match: j => j.is_urgent && !['completed','cancelled'].includes(j.status) },
   external:    { label: 'รอช่างนอก',        match: j => j.status === 'external_tech' },
   ooo:         { label: 'ห้องปิดบริการ',    match: j => j.work_orders?.some(w => w.ooo_room && ['assigned','in_progress','external'].includes(w.status)) },
 }
@@ -46,17 +47,17 @@ export default function DashboardPage() {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedJobId, setSelectedJobId] = useState(null)
-  const [activeFilter, setActiveFilter] = useState(null) // key of FILTERS or null
+  const [activeFilter, setActiveFilter] = useState(null)
 
   useEffect(() => {
     api.getJobs({ limit: 100 }).then(setJobs).finally(() => setLoading(false))
   }, [])
 
-  // นับจำนวนแต่ละประเภท
   const counts = {
     pending:    jobs.filter(FILTERS.pending.match).length,
     inProgress: jobs.filter(FILTERS.inProgress.match).length,
     inspection: jobs.filter(FILTERS.inspection.match).length,
+    veryUrgent: jobs.filter(FILTERS.veryUrgent.match).length,
     urgent:     jobs.filter(FILTERS.urgent.match).length,
     external:   jobs.filter(FILTERS.external.match).length,
     ooo:        jobs.reduce((acc, j) => {
@@ -65,7 +66,6 @@ export default function DashboardPage() {
     }, 0),
   }
 
-  // รายการที่แสดง — ถ้ามี filter ใช้ filter, ถ้าไม่มีแสดง 8 รายการล่าสุด
   const displayedJobs = activeFilter
     ? jobs.filter(FILTERS[activeFilter].match)
     : jobs.slice(0, 8)
@@ -76,9 +76,10 @@ export default function DashboardPage() {
 
   const cards = [
     { key: 'pending',    label: 'รอรับงาน',       value: counts.pending,    icon: ClipboardList, color: 'bg-yellow-50 text-yellow-600' },
-    { key: 'inProgress', label: 'กำลังดำเนินการ', value: counts.inProgress, icon: Clock,          color: 'bg-blue-50 text-blue-600' },
+    { key: 'inProgress', label: 'กำลังดำเนินการ', value: counts.inProgress, icon: Clock,         color: 'bg-blue-50 text-blue-600' },
     { key: 'inspection', label: 'รอตรวจ',         value: counts.inspection, icon: CheckCircle,   color: 'bg-orange-50 text-orange-600' },
-    { key: 'urgent',     label: 'งานด่วน',        value: counts.urgent,     icon: AlertTriangle, color: 'bg-red-50 text-red-600' },
+    { key: 'veryUrgent', label: 'ด่วนมาก 🚨',     value: counts.veryUrgent, icon: Zap,            color: 'bg-red-100 text-red-700' },
+    { key: 'urgent',     label: 'งานด่วน 🔴',     value: counts.urgent,     icon: AlertTriangle, color: 'bg-red-50 text-red-600' },
     { key: 'external',   label: 'รอช่างนอก',      value: counts.external,   icon: Wrench,        color: 'bg-purple-50 text-purple-600' },
     { key: 'ooo',        label: 'ห้องปิดบริการ',  value: counts.ooo,        icon: DoorClosed,    color: 'bg-gray-100 text-gray-600' },
   ]
@@ -99,8 +100,8 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Stat Cards — กดเพื่อ filter */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Stat Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {cards.map(c => (
             <StatCard
               key={c.key}
@@ -150,7 +151,13 @@ export default function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-mono text-gray-400">{job.request_number}</span>
-                      {job.is_urgent && (
+                      {job.priority === 'very_urgent' && (
+                        <span className="text-xs px-1.5 py-0.5 bg-red-600 text-white rounded font-bold">🚨 ด่วนมาก</span>
+                      )}
+                      {job.priority === 'urgent' && job.priority !== 'very_urgent' && (
+                        <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">🔴 ด่วน</span>
+                      )}
+                      {!job.priority && job.is_urgent && (
                         <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-medium">ด่วน</span>
                       )}
                     </div>
@@ -173,7 +180,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Job Detail Drawer */}
       {selectedJobId && (
         <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
       )}

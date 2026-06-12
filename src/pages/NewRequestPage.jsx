@@ -34,7 +34,9 @@ export default function NewRequestPage() {
     issue_type_id: '',
     other_issue: '',
     description: '',
-    scheduled_at: '',
+    sched_date: '',
+    sched_hour: '08',
+    sched_minute: '00',
   })
   const [images, setImages] = useState([])
   const [submitting, setSubmitting] = useState(false)
@@ -86,7 +88,9 @@ export default function NewRequestPage() {
         guest_inhouse: form.guest_inhouse,
         is_urgent: form.priority !== 'normal',
         priority: form.priority,
-        scheduled_at: form.scheduled_at || null,
+        scheduled_at: form.sched_date
+          ? `${form.sched_date}T${form.sched_hour}:${form.sched_minute}:00`
+          : null,
         issue_type_id: form.issue_type_id && form.issue_type_id !== 'other' ? Number(form.issue_type_id) : null,
         other_issue: form.issue_type_id === 'other' ? form.other_issue : null,
         description: form.description,
@@ -215,9 +219,25 @@ export default function NewRequestPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่ต้องการให้ซ่อม</label>
-              <input type="datetime-local" value={form.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-xs text-gray-400 mt-1">ไม่บังคับ — ระบุหากต้องการให้ซ่อมในช่วงเวลาใดเวลาหนึ่ง</p>
+              <div className="flex gap-2">
+                <input type="date" value={form.sched_date} onChange={e => set('sched_date', e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <select value={form.sched_hour} onChange={e => set('sched_hour', e.target.value)}
+                  disabled={!form.sched_date}
+                  className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
+                  {Array.from({length: 24}, (_, i) => String(i).padStart(2,'0')).map(h => (
+                    <option key={h} value={h}>{h} น.</option>
+                  ))}
+                </select>
+                <select value={form.sched_minute} onChange={e => set('sched_minute', e.target.value)}
+                  disabled={!form.sched_date}
+                  className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
+                  {['00','15','30','45'].map(m => (
+                    <option key={m} value={m}>{m} น.</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">ไม่บังคับ — เลือกวันที่ก่อน จากนั้นเลือกชั่วโมงและนาที</p>
             </div>
           </div>
         </Section>
