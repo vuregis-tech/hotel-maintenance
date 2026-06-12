@@ -9,7 +9,7 @@ import os, uuid
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
                       Inspection, InspectionImage, RequestHistory, User, OnDutySchedule)
-from ..schemas import (RequestCreate, RequestOut, WorkOrderCreate, WorkOrderComplete,
+from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
@@ -127,7 +127,9 @@ def create_request(data: RequestCreate, db: Session = Depends(get_db),
         sub_area_id=data.sub_area_id,
         other_location=data.other_location,
         guest_inhouse=data.guest_inhouse,
-        is_urgent=data.is_urgent,
+        is_urgent=data.priority in ('urgent', 'very_urgent'),
+        priority=data.priority,
+        scheduled_at=data.scheduled_at,
         issue_type_id=data.issue_type_id,
         other_issue=data.other_issue,
         description=data.description,
@@ -483,7 +485,10 @@ def complete_work(job_id: int, data: WorkOrderComplete,
     wo.materials_used = materials_json
     wo.total_cost = total_cost if total_cost > 0 else None
     wo.ooo_room = data.ooo_room
-    wo.ooo_days = data.ooo_days
+    wo.ooo_days = None  # replaced by date range
+    wo.ooo_start_date = data.ooo_start_date
+    wo.ooo_end_date = data.ooo_end_date
+    wo.ooo_notified_user_id = data.ooo_notified_user_id
     wo.completed_at = datetime.now()
 
     old_status = req.status
@@ -583,5 +588,47 @@ def cancel_request(job_id: int, db: Session = Depends(get_db),
     old_status = req.status
     req.status = "cancelled"
     add_history(db, job_id, old_status, "cancelled", current_user.id, "ยกเลิกงาน")
+    db.commit()
+    return get_req(db, job_id)
+
+
+# ── Edit Request (by reporter dept, before tech accepts) ────
+
+@router.put("/{job_id}/edit", response_model=RequestOut)
+def edit_request(job_id: int, data: RequestEdit, db: Session = Depends(get_db),
+                 current_user: User = Depends(get_current_user)):
+    req = get_req(db, job_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+
+    # Check permission: same dept as reporter, or admin/supervisor
+    is_same_dept = (current_user.department == req.reporter.department)
+    is_admin = current_user.role in ('admin', 'supervisor')
+    if not (is_same_dept or is_admin):
+        raise HTTPException(status_code=403, detail="ไม่มีสิทธิ์แก้ไขงานของแผนกอื่น")
+
+    wo = next((w for w in req.work_orders if w.status in ('assigned', 'in_progress')), None)
+    if req.status not in ('pending',) and not (req.status == 'assigned' and wo and wo.accepted_at is None):
+        raise HTTPException(status_code=400, detail="ไม่สามารถแก้ไขได้ ช่างรับงานแล้ว")
+
+    if data.issue_type_id is not None:
+        req.issue_type_id = data.issue_type_id
+    if data.other_issue is not None:
+        req.other_issue = data.other_issue
+    if data.description is not None:
+        req.description = data.description
+    if data.scheduled_at is not None:
+        req.scheduled_at = data.scheduled_at
+    if data.priority is not None:
+        req.priority = data.priority
+        req.is_urgent = data.priority in ('urgent', 'very_urgent')
+    if data.guest_inhouse is not None:
+        req.guest_inhouse = data.guest_inhouse
+
+    req.last_edited_by_id = current_user.id
+    req.last_edited_at = datetime.now()
+
+    add_history(db, job_id, req.status, req.status, current_user.id,
+                f"แก้ไขรายละเอียดโดย {current_user.full_name}")
     db.commit()
     return get_req(db, job_id)

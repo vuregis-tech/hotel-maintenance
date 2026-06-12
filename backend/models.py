@@ -80,11 +80,17 @@ class MaintenanceRequest(Base):
     other_issue = Column(String(200), nullable=True)
     description = Column(Text, nullable=False)
 
+    priority = Column(String(20), nullable=False, default="normal")  # normal, urgent, very_urgent
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    last_edited_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_edited_at = Column(DateTime(timezone=True), nullable=True)
+
     status = Column(String(30), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     reporter = relationship("User", foreign_keys=[reporter_id], back_populates="reported_requests")
+    last_edited_by = relationship("User", foreign_keys=[last_edited_by_id])
     main_area = relationship("MainArea", back_populates="requests")
     sub_area = relationship("SubArea", back_populates="requests")
     issue_type = relationship("IssueType", back_populates="requests")
@@ -145,6 +151,9 @@ class WorkOrder(Base):
     total_cost = Column(Float, nullable=True)
     ooo_room = Column(Boolean, default=False)
     ooo_days = Column(Integer, nullable=True)
+    ooo_start_date = Column(String(10), nullable=True)   # YYYY-MM-DD
+    ooo_end_date = Column(String(10), nullable=True)     # YYYY-MM-DD
+    ooo_notified_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_external = Column(Boolean, default=False)   # ต้องใช้ช่างภายนอก
     external_note = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -162,6 +171,8 @@ class WorkOrder(Base):
     assigned_by = relationship("User", foreign_keys=[assigned_by_id], back_populates="assigned_orders")
     transferred_to = relationship("User", foreign_keys=[transferred_to_id],
                                   overlaps="technician,technician_orders,assigned_by,assigned_orders")
+    ooo_notified_user = relationship("User", foreign_keys=[ooo_notified_user_id],
+                                     overlaps="technician,technician_orders,assigned_by,assigned_orders,transferred_to")
     co_assignments = relationship("CoAssignment", back_populates="work_order", cascade="all, delete-orphan")
 
 

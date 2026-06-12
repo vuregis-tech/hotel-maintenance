@@ -8,7 +8,7 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import {
   X, Wrench, CheckCircle, XCircle, Plus, Trash2,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2
 } from 'lucide-react'
 
 // ── Sub-components ──────────────────────────────────────
@@ -137,6 +137,9 @@ export default function JobDrawer({ jobId, onClose }) {
   const [job, setJob] = useState(null)
   const [loading, setLoading] = useState(true)
   const [technicians, setTechnicians] = useState([])
+  const [onDutyTechs, setOnDutyTechs] = useState([])
+  const [allUsers, setAllUsers] = useState([])
+  const [issueTypes, setIssueTypes] = useState([])
 
   // inner modal state
   const [modal, setModal] = useState(null)
@@ -145,9 +148,14 @@ export default function JobDrawer({ jobId, onClose }) {
   const [rejectReason, setRejectReason] = useState('')
   const [transferNote, setTransferNote] = useState('')
   const [completeForm, setCompleteForm] = useState({
-    repair_details: '', materials: [], ooo_room: false, ooo_days: '', is_external: false, external_note: ''
+    repair_details: '', materials: [], ooo_room: false,
+    ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
+    is_external: false, external_note: ''
   })
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
+  const [editForm, setEditForm] = useState({
+    description: '', issue_type_id: '', priority: 'normal', scheduled_at: '', guest_inhouse: false
+  })
   const [locationHistory, setLocationHistory] = useState([])
   const [histLoading, setHistLoading] = useState(false)
 
@@ -161,8 +169,18 @@ export default function JobDrawer({ jobId, onClose }) {
 
   // โหลดช่างเมื่อเปิด modal ที่ต้องเลือกช่าง
   useEffect(() => {
-    if (['assign', 'reassign', 'coassign'].includes(modal) && technicians.length === 0)
-      api.getTechnicians().then(setTechnicians)
+    if (['assign', 'reassign', 'coassign', 'recall', 'transfer'].includes(modal) && technicians.length === 0) {
+      Promise.all([api.getTechnicians(), api.getOnDutyToday()]).then(([techs, duty]) => {
+        setTechnicians(techs)
+        setOnDutyTechs(duty.map ? duty.map(d => d.technician_id || d.technician?.id) : [])
+      })
+    }
+    if (modal === 'complete' && allUsers.length === 0) {
+      api.getUsers().then(setAllUsers)
+    }
+    if (modal === 'edit') {
+      if (issueTypes.length === 0) api.getIssueTypes().then(setIssueTypes)
+    }
   }, [modal])
 
   // ปิดด้วย ESC
@@ -206,12 +224,30 @@ export default function JobDrawer({ jobId, onClose }) {
         repair_details: completeForm.repair_details,
         materials: completeForm.materials.filter(m => m.name),
         ooo_room: completeForm.ooo_room,
-        ooo_days: completeForm.ooo_room && completeForm.ooo_days ? Number(completeForm.ooo_days) : null,
+        ooo_start_date: completeForm.ooo_room && completeForm.ooo_start_date ? completeForm.ooo_start_date : null,
+        ooo_end_date: completeForm.ooo_room && completeForm.ooo_end_date ? completeForm.ooo_end_date : null,
+        ooo_notified_user_id: completeForm.ooo_notified_user_id ? Number(completeForm.ooo_notified_user_id) : null,
         is_external: completeForm.is_external,
         external_note: completeForm.is_external ? completeForm.external_note : null,
       })
       setJob(updated); setModal(null)
       toast.success(completeForm.is_external ? 'บันทึก: รอช่างภายนอก' : 'บันทึกการซ่อมสำเร็จ')
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleEdit() {
+    setActing(true)
+    try {
+      const payload = {}
+      if (editForm.description) payload.description = editForm.description
+      if (editForm.issue_type_id) payload.issue_type_id = editForm.issue_type_id !== 'other' ? Number(editForm.issue_type_id) : null
+      if (editForm.priority) payload.priority = editForm.priority
+      if (editForm.scheduled_at !== undefined) payload.scheduled_at = editForm.scheduled_at || null
+      payload.guest_inhouse = editForm.guest_inhouse
+      const updated = await api.editJob(job.id, payload)
+      setJob(updated); setModal(null)
+      toast.success('แก้ไขข้อมูลสำเร็จ')
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
   }
@@ -320,19 +356,57 @@ export default function JobDrawer({ jobId, onClose }) {
   const canReject   = job && isMyWO && job.status === 'assigned'
   const canTransfer = job && (isMyWO || isSuperAdmin) && ['assigned', 'in_progress'].includes(job.status)
   const canSelfAssign = job && user?.role === 'technician' && job.status === 'pending'
+  const canEdit = job && (
+    (job.status === 'pending') ||
+    (job.status === 'assigned' && !wo?.accepted_at)
+  ) && (
+    user?.department === job.reporter?.department ||
+    ['admin', 'supervisor'].includes(user?.role)
+  )
 
   let parsedMaterials = []
   if (wo?.materials_used) {
     try { parsedMaterials = JSON.parse(wo.materials_used) } catch { }
   }
 
-  const TechSelect = () => (
-    <select value={selectedTech} onChange={e => setSelectedTech(e.target.value)}
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
-      <option value="">-- เลือกช่าง --</option>
-      {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name} ({t.department})</option>)}
-    </select>
-  )
+  // Checkbox list for tech selection (on-duty first)
+  const TechCheckList = () => {
+    const onDutyList = technicians.filter(t => onDutyTechs.includes(t.id))
+    const offDutyList = technicians.filter(t => !onDutyTechs.includes(t.id))
+    const renderTech = (t) => (
+      <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${selectedTech === String(t.id) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
+        <input type="checkbox" checked={selectedTech === String(t.id)}
+          onChange={() => setSelectedTech(selectedTech === String(t.id) ? '' : String(t.id))}
+          className="w-4 h-4 text-blue-600 rounded" />
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+          <span className="text-xs text-gray-500 ml-1">({t.department})</span>
+        </div>
+        {onDutyTechs.includes(t.id) && (
+          <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">🟢 On Duty</span>
+        )}
+      </label>
+    )
+    return (
+      <div className="mb-4 max-h-52 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+        {onDutyList.length > 0 && (
+          <>
+            <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700 sticky top-0">🟢 On Duty วันนี้</div>
+            {onDutyList.map(renderTech)}
+          </>
+        )}
+        {offDutyList.length > 0 && (
+          <>
+            {onDutyList.length > 0 && <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 sticky top-0">ช่างทั้งหมด</div>}
+            {offDutyList.map(renderTech)}
+          </>
+        )}
+        {technicians.length === 0 && (
+          <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <>
@@ -352,7 +426,13 @@ export default function JobDrawer({ jobId, onClose }) {
           ) : job ? (
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="font-bold text-gray-900 text-base">{job.request_number}</span>
-              {job.is_urgent && (
+              {job.priority === 'very_urgent' && (
+                <span className="text-xs px-2 py-0.5 bg-red-600 text-white rounded-full font-semibold">🚨 ด่วนมาก</span>
+              )}
+              {job.priority === 'urgent' && (
+                <span className="text-xs px-2 py-0.5 bg-orange-400 text-white rounded-full font-semibold">🔴 ด่วน</span>
+              )}
+              {(!job.priority || job.priority === 'normal') && job.is_urgent && (
                 <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">ด่วน</span>
               )}
               {job.guest_inhouse && (
@@ -388,7 +468,7 @@ export default function JobDrawer({ jobId, onClose }) {
             <>
               {/* ── Action Buttons ── */}
               {(canAssign || canAccept || canComplete || canRecall || canCoAssign ||
-                canInspect || canCancel || canReject || canTransfer || canSelfAssign) && (
+                canInspect || canCancel || canReject || canTransfer || canSelfAssign || canEdit) && (
                 <div className="flex flex-wrap gap-2">
                   {canAssign && (
                     <button onClick={() => { setSelectedTech(''); setModal('assign') }}
@@ -450,6 +530,21 @@ export default function JobDrawer({ jobId, onClose }) {
                       <XCircle className="w-4 h-4" /> ยกเลิก
                     </button>
                   )}
+                  {canEdit && (
+                    <button onClick={() => {
+                      setEditForm({
+                        description: job.description || '',
+                        issue_type_id: job.issue_type?.id ? String(job.issue_type.id) : '',
+                        priority: job.priority || 'normal',
+                        scheduled_at: job.scheduled_at ? job.scheduled_at.slice(0, 16) : '',
+                        guest_inhouse: job.guest_inhouse || false,
+                      })
+                      setModal('edit')
+                    }}
+                      className="flex items-center gap-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium">
+                      <Edit2 className="w-4 h-4" /> แก้ไข
+                    </button>
+                  )}
                   <button onClick={() => { setModal('history'); loadHistory() }}
                     className="flex items-center gap-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium">
                     <History className="w-4 h-4" /> ประวัติพื้นที่นี้
@@ -469,6 +564,10 @@ export default function JobDrawer({ jobId, onClose }) {
                   } />
                   <InfoRow label="ประเภทงาน" value={job.issue_type?.name || job.other_issue} />
                   <InfoRow label="รายละเอียด" value={job.description} pre />
+                  <InfoRow label="นัดซ่อม" value={job.scheduled_at ? format(new Date(job.scheduled_at), 'd MMMM yyyy HH:mm น.', { locale: th }) : null} />
+                  {job.last_edited_by && (
+                    <InfoRow label="แก้ไขล่าสุด" value={`โดย ${job.last_edited_by.full_name}${job.last_edited_at ? ' เมื่อ ' + format(new Date(job.last_edited_at), 'd MMM yy HH:mm', { locale: th }) : ''}`} />
+                  )}
                 </div>
                 {job.images?.length > 0 && (
                   <div className="mt-4">
@@ -552,7 +651,9 @@ export default function JobDrawer({ jobId, onClose }) {
                         </div>
                       </div>
                     )}
-                    {wo.ooo_room && <InfoRow label="ปิดห้อง OOO" value={`${wo.ooo_days || '-'} วัน`} />}
+                    {wo.ooo_room && !wo.ooo_start_date && <InfoRow label="ปิดห้อง OOO" value={`${wo.ooo_days || '-'} วัน`} />}
+                    {wo.ooo_start_date && <InfoRow label="ปิดห้อง OOO" value={`${wo.ooo_start_date} ถึง ${wo.ooo_end_date || '?'}`} />}
+                    {wo.ooo_notified_user && <InfoRow label="แจ้ง" value={wo.ooo_notified_user.full_name} />}
                     {wo.completed_at && <InfoRow label="ซ่อมเสร็จ" value={format(new Date(wo.completed_at), 'd MMM yyyy HH:mm', { locale: th })} />}
                   </div>
                 </Section>
@@ -606,7 +707,7 @@ export default function JobDrawer({ jobId, onClose }) {
 
       {modal === 'assign' && (
         <InnerModal title="จ่ายงานให้ช่าง" onClose={() => setModal(null)}>
-          <TechSelect />
+          <TechCheckList />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={() => handleAssign('assign')} disabled={acting}
@@ -632,7 +733,7 @@ export default function JobDrawer({ jobId, onClose }) {
 
       {modal === 'coassign' && (
         <InnerModal title="เพิ่มช่างร่วมปฏิบัติงาน" onClose={() => setModal(null)}>
-          <TechSelect />
+          <TechCheckList />
           <div className="flex gap-2">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={() => handleAssign('coassign')} disabled={acting}
@@ -663,10 +764,33 @@ export default function JobDrawer({ jobId, onClose }) {
               <span className="text-sm text-gray-700">ปิดห้อง Out of Order</span>
             </label>
             {completeForm.ooo_room && (
-              <input type="number" min={1} value={completeForm.ooo_days}
-                onChange={e => setCompleteForm(f => ({ ...f, ooo_days: e.target.value }))}
-                placeholder="จำนวนวันที่ปิด"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              <div className="space-y-2 pl-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่มปิด</label>
+                    <input type="date" value={completeForm.ooo_start_date}
+                      onChange={e => setCompleteForm(f => ({ ...f, ooo_start_date: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">วันที่เปิดคืน</label>
+                    <input type="date" value={completeForm.ooo_end_date}
+                      onChange={e => setCompleteForm(f => ({ ...f, ooo_end_date: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">แจ้ง Housemate/Front</label>
+                  <select value={completeForm.ooo_notified_user_id}
+                    onChange={e => setCompleteForm(f => ({ ...f, ooo_notified_user_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    <option value="">-- เลือกผู้รับแจ้ง --</option>
+                    {allUsers.filter(u => /housemate|front/i.test(u.department)).map(u => (
+                      <option key={u.id} value={u.id}>{u.full_name} ({u.department})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             )}
             <div className="border border-purple-200 rounded-lg p-3 bg-purple-50 space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -767,12 +891,43 @@ export default function JobDrawer({ jobId, onClose }) {
             {selectedTech === 'reassign_mode' && (
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">เลือกช่างคนใหม่</label>
-                <select id="recall_tech_select"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">-- เลือกช่าง --</option>
-                  {technicians.filter(t => t.id !== wo?.technician?.id)
-                    .map(t => <option key={t.id} value={t.id}>{t.full_name} ({t.department})</option>)}
-                </select>
+                <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {(() => {
+                    const filtered = technicians.filter(t => t.id !== wo?.technician?.id)
+                    const onD = filtered.filter(t => onDutyTechs.includes(t.id))
+                    const offD = filtered.filter(t => !onDutyTechs.includes(t.id))
+                    return (
+                      <>
+                        {onD.length > 0 && (
+                          <>
+                            <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700 sticky top-0">🟢 On Duty วันนี้</div>
+                            {onD.map(t => (
+                              <label key={t.id} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50">
+                                <input type="radio" name="recall_new_tech_drawer" value={t.id} className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+                                <span className="text-xs text-gray-500">({t.department})</span>
+                                <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full ml-auto">🟢 On Duty</span>
+                              </label>
+                            ))}
+                          </>
+                        )}
+                        {offD.length > 0 && (
+                          <>
+                            {onD.length > 0 && <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 sticky top-0">ช่างทั้งหมด</div>}
+                            {offD.map(t => (
+                              <label key={t.id} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50">
+                                <input type="radio" name="recall_new_tech_drawer" value={t.id} className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+                                <span className="text-xs text-gray-500">({t.department})</span>
+                              </label>
+                            ))}
+                          </>
+                        )}
+                        {filtered.length === 0 && <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>}
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
             )}
           </div>
@@ -781,7 +936,7 @@ export default function JobDrawer({ jobId, onClose }) {
               className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
             <button onClick={() => {
               if (selectedTech === 'reassign_mode') {
-                const sel = document.getElementById('recall_tech_select')
+                const sel = document.querySelector('input[name="recall_new_tech_drawer"]:checked')
                 if (!sel?.value) return toast.error('กรุณาเลือกช่างคนใหม่')
                 handleRecall(sel.value)
               } else {
@@ -822,12 +977,40 @@ export default function JobDrawer({ jobId, onClose }) {
             <p className="text-sm text-gray-600">เลือกช่างที่จะโอนงานให้ ช่างคนนั้นจะได้รับงานนี้ทันที</p>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">ช่างที่รับงานต่อ *</label>
-              <select value={selectedTech} onChange={e => setSelectedTech(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">-- เลือกช่าง --</option>
-                {technicians.filter(t => t.id !== wo?.technician?.id)
-                  .map(t => <option key={t.id} value={t.id}>{t.full_name} ({t.department})</option>)}
-              </select>
+              {(() => {
+                const filtered = technicians.filter(t => t.id !== wo?.technician?.id)
+                const onDutyFiltered = filtered.filter(t => onDutyTechs.includes(t.id))
+                const offDutyFiltered = filtered.filter(t => !onDutyTechs.includes(t.id))
+                return (
+                  <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {onDutyFiltered.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-700 sticky top-0">🟢 On Duty วันนี้</div>
+                        {onDutyFiltered.map(t => (
+                          <label key={t.id} className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 ${selectedTech === String(t.id) ? 'bg-blue-50' : ''}`}>
+                            <input type="checkbox" checked={selectedTech === String(t.id)}
+                              onChange={() => setSelectedTech(selectedTech === String(t.id) ? '' : String(t.id))}
+                              className="w-4 h-4 text-blue-600 rounded" />
+                            <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+                            <span className="text-xs text-gray-500">({t.department})</span>
+                            <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full ml-auto">🟢 On Duty</span>
+                          </label>
+                        ))}
+                      </>
+                    )}
+                    {offDutyFiltered.map(t => (
+                      <label key={t.id} className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 ${selectedTech === String(t.id) ? 'bg-blue-50' : ''}`}>
+                        <input type="checkbox" checked={selectedTech === String(t.id)}
+                          onChange={() => setSelectedTech(selectedTech === String(t.id) ? '' : String(t.id))}
+                          className="w-4 h-4 text-blue-600 rounded" />
+                        <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
+                        <span className="text-xs text-gray-500">({t.department})</span>
+                      </label>
+                    ))}
+                    {filtered.length === 0 && <div className="px-3 py-4 text-center text-sm text-gray-400">กำลังโหลด...</div>}
+                  </div>
+                )
+              })()}
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">หมายเหตุ</label>
@@ -841,6 +1024,62 @@ export default function JobDrawer({ jobId, onClose }) {
             <button onClick={() => handleTransfer(selectedTech, transferNote)} disabled={acting}
               className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
               {acting ? 'กำลังโอน...' : 'ยืนยันโอนงาน'}
+            </button>
+          </div>
+        </InnerModal>
+      )}
+
+      {modal === 'edit' && (
+        <InnerModal title="แก้ไขรายละเอียดงาน" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">ประเภทงาน</label>
+              <select value={editForm.issue_type_id} onChange={e => setEditForm(f => ({ ...f, issue_type_id: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">-- เลือกประเภทงาน --</option>
+                {issueTypes.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">ระดับความเร่งด่วน</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'normal', label: 'ปกติ' },
+                  { value: 'urgent', label: 'ด่วน 🔴' },
+                  { value: 'very_urgent', label: 'ด่วนมาก 🚨' },
+                ].map(opt => (
+                  <button key={opt.value} type="button"
+                    onClick={() => setEditForm(f => ({ ...f, priority: opt.value }))}
+                    className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors ${editForm.priority === opt.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-700'}`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">รายละเอียดงานซ่อม</label>
+              <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                rows={3} placeholder="รายละเอียด..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">เวลาที่ต้องการให้ซ่อม</label>
+              <input type="datetime-local" value={editForm.scheduled_at}
+                onChange={e => setEditForm(f => ({ ...f, scheduled_at: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={editForm.guest_inhouse}
+                onChange={e => setEditForm(f => ({ ...f, guest_inhouse: e.target.checked }))}
+                className="w-4 h-4 text-blue-600 rounded" />
+              <span className="text-sm text-gray-700">มีแขก In House</span>
+            </label>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
+            <button onClick={handleEdit} disabled={acting}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
+              {acting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
             </button>
           </div>
         </InnerModal>

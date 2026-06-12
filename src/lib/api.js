@@ -106,6 +106,10 @@ export const api = {
   selfAssignJob: (id) => request('POST', `/api/jobs/${id}/self-assign`),
   rejectJob: (id, reason) => request('POST', `/api/jobs/${id}/reject`, { reason }),
   transferJob: (id, technicianId, note) => request('POST', `/api/jobs/${id}/transfer`, { technician_id: technicianId, note }),
+  editJob: (id, data) => request('PUT', `/api/jobs/${id}/edit`, data),
+
+  // On-duty today (convenience)
+  getOnDutyToday: () => request('GET', '/api/onduty'),
 
   // Reports
   getReportSummary: (params = {}) => {

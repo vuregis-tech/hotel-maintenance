@@ -92,6 +92,17 @@ def run_migrations():
         # ข้อ 6: transfer fields
         ("work_orders", "transferred_to_id", "INTEGER"),
         ("work_orders", "transfer_note", "TEXT"),
+        # Feature 2: priority
+        ("maintenance_requests", "priority", "VARCHAR(20) DEFAULT 'normal'"),
+        # Feature 3: scheduled repair time
+        ("maintenance_requests", "scheduled_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+        # Feature 4: edit tracking
+        ("maintenance_requests", "last_edited_by_id", "INTEGER"),
+        ("maintenance_requests", "last_edited_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+        # Feature 5: OOO date range
+        ("work_orders", "ooo_start_date", "VARCHAR(10)"),
+        ("work_orders", "ooo_end_date", "VARCHAR(10)"),
+        ("work_orders", "ooo_notified_user_id", "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:

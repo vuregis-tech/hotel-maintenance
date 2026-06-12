@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import toast from 'react-hot-toast'
-import { Upload, X, AlertTriangle, Users, MapPin, Wrench, FileText, Camera, Image } from 'lucide-react'
+import { Upload, X, Users, MapPin, Wrench, FileText, Camera, Image } from 'lucide-react'
 
 // ✅ ต้องนิยาม Section ข้างนอก component หลัก
 // ถ้านิยามข้างใน → React จะสร้าง component ใหม่ทุก render → focus หาย
@@ -30,10 +30,11 @@ export default function NewRequestPage() {
     sub_area_id: '',
     other_location: '',
     guest_inhouse: false,
-    is_urgent: false,
+    priority: 'normal',
     issue_type_id: '',
     other_issue: '',
     description: '',
+    scheduled_at: '',
   })
   const [images, setImages] = useState([])
   const [submitting, setSubmitting] = useState(false)
@@ -83,7 +84,9 @@ export default function NewRequestPage() {
         sub_area_id: form.sub_area_id ? Number(form.sub_area_id) : null,
         other_location: isOtherArea ? form.other_location : null,
         guest_inhouse: form.guest_inhouse,
-        is_urgent: form.is_urgent,
+        is_urgent: form.priority !== 'normal',
+        priority: form.priority,
+        scheduled_at: form.scheduled_at || null,
         issue_type_id: form.issue_type_id && form.issue_type_id !== 'other' ? Number(form.issue_type_id) : null,
         other_issue: form.issue_type_id === 'other' ? form.other_issue : null,
         description: form.description,
@@ -161,13 +164,22 @@ export default function NewRequestPage() {
                   className="w-4 h-4 text-blue-600 rounded" />
                 <span className="text-sm text-gray-700">มีแขก In House</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.is_urgent} onChange={e => set('is_urgent', e.target.checked)}
-                  className="w-4 h-4 text-red-600 rounded" />
-                <span className="text-sm text-red-600 font-medium flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> งานด่วน
-                </span>
-              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">ระดับความเร่งด่วน</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'normal', label: 'ปกติ', color: 'border-gray-300 text-gray-700', active: 'border-blue-500 bg-blue-50 text-blue-700' },
+                  { value: 'urgent', label: 'ด่วน 🔴', color: 'border-orange-300 text-orange-600', active: 'border-orange-500 bg-orange-50 text-orange-700' },
+                  { value: 'very_urgent', label: 'ด่วนมาก 🚨', color: 'border-red-300 text-red-600', active: 'border-red-600 bg-red-50 text-red-700' },
+                ].map(opt => (
+                  <label key={opt.value} className={`flex items-center justify-center gap-1.5 border-2 rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${form.priority === opt.value ? opt.active : opt.color}`}>
+                    <input type="radio" name="priority" value={opt.value} checked={form.priority === opt.value} onChange={() => set('priority', opt.value)} className="hidden" />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         </Section>
@@ -199,6 +211,13 @@ export default function NewRequestPage() {
               <textarea value={form.description} onChange={e => set('description', e.target.value)}
                 rows={4} placeholder="อธิบายรายละเอียดของปัญหาที่พบ..."
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่ต้องการให้ซ่อม</label>
+              <input type="datetime-local" value={form.scheduled_at} onChange={e => set('scheduled_at', e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="text-xs text-gray-400 mt-1">ไม่บังคับ — ระบุหากต้องการให้ซ่อมในช่วงเวลาใดเวลาหนึ่ง</p>
             </div>
           </div>
         </Section>

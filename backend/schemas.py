@@ -130,6 +130,9 @@ class WorkOrderComplete(BaseModel):
     materials: Optional[List[MaterialItem]] = None   # structured list
     ooo_room: bool = False
     ooo_days: Optional[int] = None
+    ooo_start_date: Optional[str] = None
+    ooo_end_date: Optional[str] = None
+    ooo_notified_user_id: Optional[int] = None
     # if True → external technician needed
     is_external: bool = False
     external_note: Optional[str] = None
@@ -167,7 +170,10 @@ class WorkOrderOut(BaseModel):
     materials_used: Optional[str]   # JSON string
     total_cost: Optional[float]
     ooo_room: bool
-    ooo_days: Optional[int]
+    ooo_days: Optional[int] = None
+    ooo_start_date: Optional[str] = None
+    ooo_end_date: Optional[str] = None
+    ooo_notified_user: Optional[UserOut] = None
     is_external: bool
     external_note: Optional[str]
     completed_at: Optional[datetime]
@@ -260,9 +266,20 @@ class RequestCreate(BaseModel):
     other_location: Optional[str] = None
     guest_inhouse: bool = False
     is_urgent: bool = False
+    priority: str = "normal"
+    scheduled_at: Optional[datetime] = None
     issue_type_id: Optional[int] = None
     other_issue: Optional[str] = None
     description: str
+
+
+class RequestEdit(BaseModel):
+    issue_type_id: Optional[int] = None
+    other_issue: Optional[str] = None
+    description: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    priority: Optional[str] = None
+    guest_inhouse: Optional[bool] = None
 
 
 class RequestOut(BaseModel):
@@ -275,6 +292,10 @@ class RequestOut(BaseModel):
     other_location: Optional[str]
     guest_inhouse: bool
     is_urgent: bool
+    priority: str = "normal"
+    scheduled_at: Optional[datetime] = None
+    last_edited_by: Optional[UserOut] = None
+    last_edited_at: Optional[datetime] = None
     issue_type: Optional[IssueTypeOut]
     other_issue: Optional[str]
     description: str
