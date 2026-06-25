@@ -8,7 +8,8 @@ import os
 
 from .database import Base, engine
 from .models import User, MainArea, SubArea, IssueType, RepairLog
-from .auth import hash_password
+from .auth import hash_password, require_roles
+from fastapi import Depends, HTTPException
 from .database import SessionLocal
 from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
@@ -259,6 +260,63 @@ app.include_router(areas.router)
 app.include_router(issue_types.router)
 app.include_router(departments.router)
 app.include_router(onduty.router)
+
+
+@app.post("/api/admin/reseed-config")
+def reseed_config(current_user: User = Depends(require_roles("admin"))):
+    """ล้างข้อมูล areas, issue types, และ users (ยกเว้น admin) แล้ว seed ใหม่จาก config"""
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        is_pg = "postgresql" in settings.DATABASE_URL or settings.DATABASE_URL.startswith("postgres://")
+        # ลบ users ที่ไม่ใช่ admin ก่อน (ต้องลบก่อน areas เพราะ FK)
+        db.query(User).filter(User.username != "admin").delete()
+        # ลบ sub_areas และ main_areas
+        if is_pg:
+            db.execute(text("TRUNCATE TABLE sub_areas RESTART IDENTITY CASCADE"))
+            db.execute(text("TRUNCATE TABLE main_areas RESTART IDENTITY CASCADE"))
+            db.execute(text("TRUNCATE TABLE issue_types RESTART IDENTITY CASCADE"))
+        else:
+            db.execute(text("DELETE FROM sub_areas"))
+            db.execute(text("DELETE FROM main_areas"))
+            db.execute(text("DELETE FROM issue_types"))
+        db.commit()
+
+        # Re-seed ข้อมูลใหม่
+        pw_hash = hash_password(_INITIAL_PASSWORD)
+        for full_name, position, department, username in _USERS_DATA:
+            db.add(User(
+                username=username.strip(),
+                password_hash=pw_hash,
+                full_name=full_name.strip(),
+                department=department.strip(),
+                position=position.strip(),
+                role="staff",
+                must_change_password=True,
+            ))
+
+        for i, (area_name, subs) in enumerate(_AREAS_DATA):
+            area = MainArea(name=area_name, sort_order=i)
+            db.add(area)
+            db.flush()
+            for j, sub_name in enumerate(subs):
+                db.add(SubArea(name=str(sub_name), main_area_id=area.id, sort_order=j))
+
+        for i, name in enumerate(_ISSUE_TYPES):
+            db.add(IssueType(name=name, sort_order=i))
+
+        db.commit()
+        return {
+            "ok": True,
+            "users": len(_USERS_DATA),
+            "main_areas": len(_AREAS_DATA),
+            "issue_types": len(_ISSUE_TYPES),
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 
 @app.get("/api/db-info")
