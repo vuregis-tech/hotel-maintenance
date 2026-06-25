@@ -124,6 +124,8 @@ function UsersTab() {
   const [editUser, setEditUser] = useState(null)
   const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' })
   const [saving, setSaving] = useState(false)
+  const [sortCol, setSortCol] = useState('full_name')
+  const [sortDir, setSortDir] = useState('asc')
 
   const ROLE_OPTIONS = [
     { value: 'admin', label: t('admin.user.roles.admin') },
@@ -149,12 +151,23 @@ function UsersTab() {
   function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
   function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active }); setEditUser(u); setShowForm(true) }
 
+  function handleSort(col) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const av = (a[sortCol] ?? '').toString().toLowerCase()
+    const bv = (b[sortCol] ?? '').toString().toLowerCase()
+    return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+  })
+
   async function handleSave() {
     if (!form.full_name || !form.username || (!editUser && !form.password)) return toast.error(t('common.required'))
     setSaving(true)
     try {
       if (editUser) {
-        const updated = await api.updateUser(editUser.id, { full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) })
+        const updated = await api.updateUser(editUser.id, { username: form.username, full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) })
         setUsers(u => u.map(x => x.id === editUser.id ? updated : x))
       } else {
         const created = await api.createUser(form)
@@ -193,20 +206,28 @@ function UsersTab() {
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               {[
-                t('admin.user.tableHeaders.name'),
-                t('admin.user.tableHeaders.username'),
-                t('admin.user.tableHeaders.position'),
-                t('admin.user.tableHeaders.department'),
-                t('admin.user.tableHeaders.role'),
-                t('admin.user.tableHeaders.status'),
-                '',
-              ].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500">{h}</th>
+                ['full_name', t('admin.user.tableHeaders.name')],
+                ['username', t('admin.user.tableHeaders.username')],
+                ['position', t('admin.user.tableHeaders.position')],
+                ['department', t('admin.user.tableHeaders.department')],
+                ['role', t('admin.user.tableHeaders.role')],
+                ['is_active', t('admin.user.tableHeaders.status')],
+              ].map(([col, label]) => (
+                <th key={col} onClick={() => handleSort(col)}
+                  className="text-left px-4 py-3 text-xs font-medium text-gray-500 cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100">
+                  <span className="flex items-center gap-1">
+                    {label}
+                    <span className="text-gray-300">
+                      {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </span>
+                </th>
               ))}
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {users.map(u => (
+            {sortedUsers.map(u => (
               <tr key={u.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-900">{u.full_name}</td>
                 <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
@@ -235,8 +256,7 @@ function UsersTab() {
                 <div key={f}>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">{label}</label>
                   <input type={type} value={form[f]} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
-                    disabled={editUser && f === 'username'}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
               <div>
