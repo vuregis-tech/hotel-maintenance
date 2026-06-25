@@ -95,6 +95,7 @@ def notify_new_request(request, reporter):
 
     link = f"{_app_base_url()}/requests/{request.id}"
     text = (
+        f"*********************\n"
         f"{urgent_flag}"
         f"📢 <b>แจ้งซ่อมใหม่</b>  |  {request.request_number}\n"
         f"─────────────────────\n"
@@ -105,7 +106,8 @@ def notify_new_request(request, reporter):
         f"{inhouse_flag}"
         f"─────────────────────\n"
         f"⏰ สถานะ: {STATUS_TH['pending']}\n"
-        f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>"
+        f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>\n"
+        f"."
     )
 
     targets = _targets(s.TELEGRAM_GROUP_ALL, s.TELEGRAM_GROUP_REPORTER)
@@ -124,16 +126,19 @@ def notify_status_change(request, old_status: str, new_status: str, changed_by, 
     new_th = STATUS_TH.get(new_status, new_status)
 
     link = f"{_app_base_url()}/requests/{request.id}"
+    note_line = f"💬 <b>หมายเหตุ:</b> {note}\n" if note else ""
     text = (
+        f"*********************\n"
         f"🔄 <b>สถานะงานเปลี่ยน</b>  |  {request.request_number}\n"
         f"─────────────────────\n"
         f"📍 <b>พื้นที่:</b> {_location(request)}\n"
         f"🔧 <b>ประเภท:</b> {issue}\n"
         f"📊 <b>สถานะ:</b> {old_th} → {new_th}\n"
         f"👤 <b>โดย:</b> {changed_by.full_name}\n"
-        + (f"💬 <b>หมายเหตุ:</b> {note}\n" if note else "")
-        + f"─────────────────────\n"
-        + f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>"
+        f"{note_line}"
+        f"─────────────────────\n"
+        f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>\n"
+        f"."
     )
 
     # เลือก group ตามสถานะใหม่
