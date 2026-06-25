@@ -6,7 +6,7 @@ import { api } from '../../lib/api'
 import toast from 'react-hot-toast'
 import {
   Wrench, LayoutDashboard, PlusCircle, ClipboardList,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck, Languages, KeyRound
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck, KeyRound
 } from 'lucide-react'
 
 function NavItem({ to, icon: Icon, label, onClick }) {
@@ -35,7 +35,7 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 
 export default function Layout({ children }) {
   const { user, signOut, mustChangePassword, clearMustChangePassword } = useAuth()
-  const { lang, setLang, t } = useLang()
+  const { t } = useLang()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showChangePw, setShowChangePw] = useState(false)
@@ -114,23 +114,6 @@ export default function Layout({ children }) {
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(item => <NavItem key={item.to} {...item} label={t(item.labelKey)} />)}
       </nav>
-
-      {/* Language switcher */}
-      <div className="px-4 py-3 border-t border-gray-100">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <Languages className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          <div className="flex gap-1 flex-1">
-            {['th', 'en'].map(l => (
-              <button key={l} onClick={() => setLang(l)}
-                className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
-                  lang === l ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
-                }`}>
-                {l === 'th' ? 'ไทย' : 'EN'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
       {/* Logout */}
       <div className="px-3 pb-4 border-t border-gray-100">
