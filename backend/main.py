@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 
 from .database import Base, engine
-from .models import User, MainArea, SubArea, IssueType, RepairLog
+from .models import User, MainArea, SubArea, IssueType, RepairLog, Department
 from .auth import hash_password, require_roles
 from fastapi import Depends, HTTPException
 from .database import SessionLocal
@@ -112,6 +112,17 @@ _USERS_DATA = [
     ("Thanayut Wangma", "Steward", "Culinary or Kitchen", "thanayutw"),
 ]
 
+_DEPARTMENTS_DATA = [
+    "Admin & General",
+    "Engineering",
+    "Front Office",
+    "Housekeeping",
+    "Reservations",
+    "Sales & Marketing",
+    "Food & Beverage",
+    "Culinary or Kitchen",
+]
+
 _INITIAL_PASSWORD = "12345"  # users must change on first login
 
 
@@ -162,6 +173,12 @@ def seed_data():
             for i, name in enumerate(_ISSUE_TYPES):
                 db.add(IssueType(name=name, sort_order=i))
             logger.info(f"Seeded {len(_ISSUE_TYPES)} issue types from config")
+
+        # Seed departments
+        if db.query(Department).count() == 0:
+            for name in _DEPARTMENTS_DATA:
+                db.add(Department(name=name))
+            logger.info(f"Seeded {len(_DEPARTMENTS_DATA)} departments from config")
 
         db.commit()
     finally:
@@ -269,17 +286,19 @@ def reseed_config(current_user: User = Depends(require_roles("admin"))):
     db = SessionLocal()
     try:
         is_pg = "postgresql" in settings.DATABASE_URL or settings.DATABASE_URL.startswith("postgres://")
-        # ลบ users ที่ไม่ใช่ admin ก่อน (ต้องลบก่อน areas เพราะ FK)
+        # ลบ users ที่ไม่ใช่ admin ก่อน
         db.query(User).filter(User.username != "admin").delete()
-        # ลบ sub_areas และ main_areas
+        # ลบ sub_areas, main_areas, issue_types, departments
         if is_pg:
             db.execute(text("TRUNCATE TABLE sub_areas RESTART IDENTITY CASCADE"))
             db.execute(text("TRUNCATE TABLE main_areas RESTART IDENTITY CASCADE"))
             db.execute(text("TRUNCATE TABLE issue_types RESTART IDENTITY CASCADE"))
+            db.execute(text("TRUNCATE TABLE departments RESTART IDENTITY CASCADE"))
         else:
             db.execute(text("DELETE FROM sub_areas"))
             db.execute(text("DELETE FROM main_areas"))
             db.execute(text("DELETE FROM issue_types"))
+            db.execute(text("DELETE FROM departments"))
         db.commit()
 
         # Re-seed ข้อมูลใหม่
@@ -305,12 +324,16 @@ def reseed_config(current_user: User = Depends(require_roles("admin"))):
         for i, name in enumerate(_ISSUE_TYPES):
             db.add(IssueType(name=name, sort_order=i))
 
+        for name in _DEPARTMENTS_DATA:
+            db.add(Department(name=name))
+
         db.commit()
         return {
             "ok": True,
             "users": len(_USERS_DATA),
             "main_areas": len(_AREAS_DATA),
             "issue_types": len(_ISSUE_TYPES),
+            "departments": len(_DEPARTMENTS_DATA),
         }
     except Exception as e:
         db.rollback()

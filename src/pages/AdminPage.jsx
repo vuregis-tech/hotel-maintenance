@@ -601,6 +601,7 @@ function ReseedConfigBanner() {
               <p>• ลบ Users ทั้งหมด (ยกเว้น admin)</p>
               <p>• ลบ Main Areas และ Sub Areas ทั้งหมด</p>
               <p>• ลบ Issue Types ทั้งหมด</p>
+              <p>• ลบ Departments ทั้งหมด</p>
               <p className="text-blue-700 font-medium mt-2">แล้ว Import ข้อมูลใหม่จาก config ทันที</p>
             </div>
             <div className="flex gap-2">
