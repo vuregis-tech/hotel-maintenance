@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useLang } from '../context/LangContext'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database } from 'lucide-react'
 
 // ─── Mini reusable inline edit row ───────────────────
 function EditableItem({ name, onSave, onDelete, onMoveUp, onMoveDown, children }) {
@@ -551,6 +551,75 @@ function IssueTypesTab() {
 }
 
 // ─── Main AdminPage ───────────────────────────────────
+function ReseedConfigBanner() {
+  const { t } = useLang()
+  const [confirm, setConfirm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+
+  async function handleReseed() {
+    setLoading(true)
+    try {
+      const res = await api.reseedConfig()
+      setResult(res)
+      setConfirm(false)
+      toast.success(`Import สำเร็จ: ${res.users} users, ${res.main_areas} areas, ${res.issue_types} issue types`)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+        <div className="flex items-center gap-3">
+          <Database className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-blue-900">Import ข้อมูลจาก Config</p>
+            <p className="text-xs text-blue-600 mt-0.5">
+              {result
+                ? `✓ Import แล้ว: ${result.users} users · ${result.main_areas} areas · ${result.issue_types} issue types`
+                : 'Reset และ Import Users, Areas, Issue Types จาก config ใหม่ทั้งหมด'}
+            </p>
+          </div>
+        </div>
+        <button onClick={() => setConfirm(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg whitespace-nowrap transition-colors">
+          <RefreshCw className="w-3.5 h-3.5" />
+          Import Config
+        </button>
+      </div>
+
+      {confirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-gray-900 mb-2">ยืนยัน Import Config?</h3>
+            <div className="text-sm text-gray-600 space-y-1 mb-4">
+              <p className="text-red-600 font-medium">⚠️ การดำเนินการนี้จะ:</p>
+              <p>• ลบ Users ทั้งหมด (ยกเว้น admin)</p>
+              <p>• ลบ Main Areas และ Sub Areas ทั้งหมด</p>
+              <p>• ลบ Issue Types ทั้งหมด</p>
+              <p className="text-blue-700 font-medium mt-2">แล้ว Import ข้อมูลใหม่จาก config ทันที</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirm(false)}
+                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">
+                ยกเลิก
+              </button>
+              <button onClick={handleReseed} disabled={loading}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
+                {loading ? 'กำลัง Import...' : 'ยืนยัน Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function StorageStatusBanner() {
   const [status, setStatus] = useState(null)
   useEffect(() => { api.getStorageStatus().then(setStatus).catch(() => {}) }, [])
@@ -588,6 +657,7 @@ export default function AdminPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
+      <ReseedConfigBanner />
       <StorageStatusBanner />
 
       <div className="flex gap-1 border-b border-gray-200">

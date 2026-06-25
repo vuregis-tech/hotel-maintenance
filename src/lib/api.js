@@ -128,6 +128,7 @@ export const api = {
 
   // System
   getStorageStatus: () => request('GET', '/api/system/storage-status'),
+  reseedConfig: () => request('POST', '/api/admin/reseed-config'),
 
   // Auth extras
   changePassword: (data) => request('POST', '/api/auth/change-password', data),
