@@ -37,7 +37,12 @@ def update_department(dept_id: int, data: DepartmentUpdate,
     if not dept:
         raise HTTPException(status_code=404, detail="ไม่พบแผนก")
     if data.name is not None and data.name.strip():
-        dept.name = data.name.strip()
+        old_name = dept.name
+        new_name = data.name.strip()
+        dept.name = new_name
+        # sync users ที่มี department ชื่อเดิม
+        if old_name != new_name:
+            db.query(User).filter(User.department == old_name).update({"department": new_name})
     if data.show_in_ooo is not None:
         dept.show_in_ooo = data.show_in_ooo
     db.commit()
