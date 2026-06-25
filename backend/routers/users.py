@@ -13,7 +13,7 @@ VALID_ROLES = {"admin", "supervisor", "technician", "staff"}
 
 @router.get("", response_model=List[UserOut])
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin", "supervisor"))):
-    return db.query(User).order_by(User.full_name).all()
+    return db.query(User).filter(User.is_active == True).order_by(User.full_name).all()
 
 
 @router.get("/technicians", response_model=List[UserOut])
@@ -83,6 +83,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User 
         raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="ไม่สามารถลบบัญชีตัวเองได้")
-    db.delete(user)
+    user.is_active = False
     db.commit()
     return {"ok": True}

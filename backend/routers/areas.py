@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models import MainArea, SubArea
-from ..schemas import MainAreaOut, SubAreaOut, AreaCreate, SubAreaCreate
+from ..schemas import MainAreaOut, SubAreaOut, AreaCreate, SubAreaCreate, ReorderRequest
 from ..auth import get_current_user, require_roles
 from ..models import User
 
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/areas", tags=["areas"])
 
 @router.get("", response_model=List[MainAreaOut])
 def list_areas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(MainArea).filter(MainArea.is_active == True).order_by(MainArea.name).all()
+    return db.query(MainArea).filter(MainArea.is_active == True).order_by(MainArea.sort_order, MainArea.name).all()
 
 
 @router.post("", response_model=MainAreaOut)
@@ -22,6 +22,14 @@ def create_area(data: AreaCreate, db: Session = Depends(get_db), current_user: U
     db.commit()
     db.refresh(area)
     return area
+
+
+@router.put("/reorder")
+def reorder_areas(data: ReorderRequest, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
+    for i, area_id in enumerate(data.ids):
+        db.query(MainArea).filter(MainArea.id == area_id).update({"sort_order": i})
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/{area_id}", response_model=MainAreaOut)
@@ -55,6 +63,14 @@ def create_sub_area(data: SubAreaCreate, db: Session = Depends(get_db), current_
     db.commit()
     db.refresh(sub)
     return sub
+
+
+@router.put("/sub/reorder")
+def reorder_sub_areas(data: ReorderRequest, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
+    for i, sub_id in enumerate(data.ids):
+        db.query(SubArea).filter(SubArea.id == sub_id).update({"sort_order": i})
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/sub/{sub_id}", response_model=SubAreaOut)

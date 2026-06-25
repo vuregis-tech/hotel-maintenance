@@ -9,6 +9,15 @@ import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight, W
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 
+function jobHasActiveOoo(j) {
+  const today = new Date().toISOString().split('T')[0]
+  return j.work_orders?.some(w =>
+    w.ooo_room &&
+    ['assigned', 'in_progress', 'external'].includes(w.status) &&
+    (!w.ooo_end_date || w.ooo_end_date >= today)
+  )
+}
+
 const FILTER_MATCH = {
   pending:        j => j.status === 'pending',
   inProgress:     j => ['assigned', 'in_progress'].includes(j.status),
@@ -16,7 +25,7 @@ const FILTER_MATCH = {
   veryUrgent:     j => j.priority === 'very_urgent' && !['completed','cancelled'].includes(j.status),
   urgent:         j => j.is_urgent && !['completed','cancelled'].includes(j.status),
   external:       j => j.status === 'external_tech',
-  ooo:            j => j.work_orders?.some(w => w.ooo_room && ['assigned','in_progress','external'].includes(w.status)),
+  ooo:            jobHasActiveOoo,
   completedToday: j => true, // handled by separate list
 }
 
@@ -61,10 +70,7 @@ export default function DashboardPage() {
     veryUrgent:     jobs.filter(FILTER_MATCH.veryUrgent).length,
     urgent:         jobs.filter(FILTER_MATCH.urgent).length,
     external:       jobs.filter(FILTER_MATCH.external).length,
-    ooo:            jobs.reduce((acc, j) => {
-      const wo = j.work_orders?.find(w => w.ooo_room && ['assigned','in_progress','external'].includes(w.status))
-      return acc + (wo ? (wo.ooo_days || 1) : 0)
-    }, 0),
+    ooo:            jobs.filter(jobHasActiveOoo).length,
     completedToday: completedToday.length,
   }
 
@@ -160,6 +166,11 @@ export default function DashboardPage() {
                       )}
                       {job.priority === 'urgent' && job.priority !== 'very_urgent' && (
                         <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">🔴 {t('priority.urgent')}</span>
+                      )}
+                      {jobHasActiveOoo(job) && (
+                        <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded font-medium flex items-center gap-0.5">
+                          <DoorClosed className="w-3 h-3" /> OOO
+                        </span>
                       )}
                     </div>
                     <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">{job.description}</p>

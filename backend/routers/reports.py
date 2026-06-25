@@ -1,13 +1,13 @@
 import json
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from typing import Optional
 from datetime import datetime, date, timedelta
 from collections import Counter
 
 from ..database import get_db
-from ..models import MaintenanceRequest, WorkOrder, User, IssueType
+from ..models import MaintenanceRequest, WorkOrder, User, IssueType, RepairLog
 from ..schemas import ReportSummary
 from ..auth import require_roles
 
@@ -46,6 +46,19 @@ def get_summary(
         if hrs:
             avg_hours = round(sum(hrs) / len(hrs), 1)
 
+    req_ids = [r.id for r in all_reqs]
+    today_str = date.today().isoformat()
+    if req_ids:
+        ooo_ids = db.query(WorkOrder.request_id).filter(
+            WorkOrder.request_id.in_(req_ids),
+            WorkOrder.ooo_room == True,
+            WorkOrder.status.in_(["assigned", "in_progress", "external"]),
+            or_(WorkOrder.ooo_end_date == None, WorkOrder.ooo_end_date >= today_str),
+        ).distinct().all()
+        ooo_count = len(ooo_ids)
+    else:
+        ooo_count = 0
+
     return ReportSummary(
         total=len(all_reqs),
         pending=cs("pending"), assigned=cs("assigned"),
@@ -53,6 +66,7 @@ def get_summary(
         pending_inspection=cs("pending_inspection"),
         completed=cs("completed"), reopened=cs("reopened"),
         cancelled=cs("cancelled"), external_tech=cs("external_tech"),
+        ooo_count=ooo_count,
         urgent_count=sum(1 for r in all_reqs if r.is_urgent),
         avg_completion_hours=avg_hours,
     )
@@ -331,3 +345,80 @@ def get_staff_kpi(
 
     result.sort(key=lambda x: x["completed"], reverse=True)
     return result
+
+
+@router.get("/materials")
+def get_materials_report(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    sub_area_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin", "supervisor")),
+):
+    """รายงานการใช้วัสดุสิ้นเปลือง"""
+    from collections import defaultdict
+
+    if not date_from:
+        date_from = date.today()
+    if not date_to:
+        date_to = date.today()
+
+    q = (
+        db.query(RepairLog)
+        .join(WorkOrder, RepairLog.work_order_id == WorkOrder.id)
+        .join(MaintenanceRequest, WorkOrder.request_id == MaintenanceRequest.id)
+        .filter(RepairLog.created_at >= datetime.combine(date_from, datetime.min.time()))
+        .filter(RepairLog.created_at <= datetime.combine(date_to, datetime.max.time()))
+        .filter(RepairLog.materials_used.isnot(None))
+    )
+    if sub_area_id:
+        q = q.filter(MaintenanceRequest.sub_area_id == sub_area_id)
+
+    logs = q.all()
+
+    grouped = defaultdict(lambda: {"total_qty": 0.0, "total_cost": 0.0, "usages": []})
+
+    for log in logs:
+        try:
+            materials = json.loads(log.materials_used)
+        except Exception:
+            continue
+        if not materials:
+            continue
+
+        req = log.work_order.request
+        main_area = req.main_area.name if req and req.main_area else "อื่นๆ"
+        sub_area = (req.sub_area.name if req and req.sub_area
+                    else (req.other_location if req else None) or "-")
+
+        for mat in materials:
+            name = (mat.get("name") or "").strip()
+            unit = mat.get("unit") or "ชิ้น"
+            qty = float(mat.get("qty") or 0)
+            unit_cost = float(mat.get("unit_cost") or 0)
+            if not name or qty <= 0:
+                continue
+            key = f"{name}||{unit}"
+            grouped[key]["name"] = name
+            grouped[key]["unit"] = unit
+            grouped[key]["total_qty"] += qty
+            grouped[key]["usages"].append({
+                "repair_log_id": log.id,
+                "date": log.created_at.isoformat(),
+                "qty": qty,
+                "main_area": main_area,
+                "sub_area": sub_area,
+                "request_number": req.request_number if req else "-",
+                "recorded_by": log.created_by.full_name if log.created_by else "-",
+            })
+
+    items = []
+    for v in grouped.values():
+        v["total_qty"] = round(v["total_qty"], 4)
+        items.append(v)
+    items.sort(key=lambda x: x["total_qty"], reverse=True)
+
+    return {
+        "items": items,
+        "total_entries": sum(len(i["usages"]) for i in items),
+    }

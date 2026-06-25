@@ -1,7 +1,7 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import desc
+from sqlalchemy import desc, or_, and_
 from typing import List, Optional
 from datetime import datetime, timedelta
 import os, uuid
@@ -105,6 +105,45 @@ def location_history(
     ]
 
 
+# ── Completed Today ───────────────────────────────────
+
+@router.get("/completed-today", response_model=List[RequestOut])
+def list_completed_today(db: Session = Depends(get_db),
+                         current_user: User = Depends(get_current_user)):
+    """งานที่เสร็จวันนี้: ช่างส่งตรวจวันนี้ หรือผ่านการตรวจวันนี้"""
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Tech submitted repair today
+    wo_today_ids = (db.query(WorkOrder.request_id)
+                    .filter(WorkOrder.completed_at >= today_start,
+                            WorkOrder.completed_at.isnot(None))
+                    .subquery())
+
+    # Inspection passed today
+    insp_today_ids = (db.query(Inspection.request_id)
+                      .filter(Inspection.created_at >= today_start,
+                              Inspection.result == "pass")
+                      .subquery())
+
+    q = db.query(MaintenanceRequest).filter(
+        or_(
+            and_(MaintenanceRequest.id.in_(wo_today_ids),
+                 MaintenanceRequest.status.in_(["pending_inspection", "completed"])),
+            MaintenanceRequest.id.in_(insp_today_ids)
+        )
+    )
+    if current_user.role == "technician":
+        assigned_ids = (db.query(WorkOrder.request_id)
+                        .filter(WorkOrder.technician_id == current_user.id).subquery())
+        q = q.filter(MaintenanceRequest.id.in_(assigned_ids))
+    elif current_user.role == "staff":
+        from sqlalchemy.orm import aliased as _aliased
+        RA = _aliased(User)
+        q = (q.join(RA, MaintenanceRequest.reporter_id == RA.id)
+               .filter(RA.department == current_user.department))
+    return q.order_by(desc(MaintenanceRequest.created_at)).all()
+
+
 @router.get("/{job_id}", response_model=RequestOut)
 def get_request(job_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
@@ -153,11 +192,15 @@ async def upload_image(job_id: int, file: UploadFile = File(...),
                        current_user: User = Depends(get_current_user)):
     if not get_req(db, job_id):
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
-        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์รูปภาพ")
+    fname = file.filename or ""
+    ext = os.path.splitext(fname)[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"):
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์รูปภาพ (.jpg .png .webp .gif)")
     data = await file.read()
-    filename = save_upload(data, ext)
+    try:
+        filename = save_upload(data, ext)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     db.add(RequestImage(request_id=job_id, filename=filename))
     db.commit()
     return get_req(db, job_id)
@@ -448,31 +491,6 @@ def remove_co_assign(job_id: int, co_id: int,
     return get_req(db, job_id)
 
 
-# ── Completed Today ───────────────────────────────────
-
-@router.get("/completed-today", response_model=List[RequestOut])
-def list_completed_today(db: Session = Depends(get_db),
-                         current_user: User = Depends(get_current_user)):
-    """งานที่ช่างส่งตรวจในวันนี้ (wo.completed_at >= today)"""
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    done_req_ids = (db.query(WorkOrder.request_id)
-                    .filter(WorkOrder.completed_at >= today_start,
-                            WorkOrder.completed_at.isnot(None))
-                    .subquery())
-    q = db.query(MaintenanceRequest).filter(
-        MaintenanceRequest.id.in_(done_req_ids),
-        MaintenanceRequest.status.in_(["pending_inspection", "completed"])
-    )
-    if current_user.role == "technician":
-        assigned_ids = (db.query(WorkOrder.request_id)
-                        .filter(WorkOrder.technician_id == current_user.id).subquery())
-        q = q.filter(MaintenanceRequest.id.in_(assigned_ids))
-    elif current_user.role == "staff":
-        from sqlalchemy.orm import aliased as _aliased
-        RA = _aliased(User)
-        q = (q.join(RA, MaintenanceRequest.reporter_id == RA.id)
-               .filter(RA.department == current_user.department))
-    return q.order_by(desc(MaintenanceRequest.created_at)).all()
 
 
 # ── Complete Work ─────────────────────────────────────

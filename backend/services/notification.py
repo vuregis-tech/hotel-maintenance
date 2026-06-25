@@ -2,6 +2,7 @@
 Telegram Notification Service
 ส่ง notification เมื่อมีงานใหม่หรือสถานะเปลี่ยน
 """
+import os
 import threading
 import logging
 import httpx
@@ -13,6 +14,13 @@ logger = logging.getLogger(__name__)
 def _get_settings():
     from ..config import get_settings
     return get_settings()
+
+
+def _app_base_url() -> str:
+    domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    if domain:
+        return f"https://{domain}"
+    return _get_settings().APP_URL
 
 
 # ── สถานะภาษาไทย ──────────────────────────────────────
@@ -85,6 +93,7 @@ def notify_new_request(request, reporter):
     inhouse_flag = "👥 <i>มีแขก In House</i>\n" if request.guest_inhouse else ""
     issue = request.issue_type.name if request.issue_type else (request.other_issue or "-")
 
+    link = f"{_app_base_url()}/requests/{request.id}"
     text = (
         f"{urgent_flag}"
         f"📢 <b>แจ้งซ่อมใหม่</b>  |  {request.request_number}\n"
@@ -95,7 +104,8 @@ def notify_new_request(request, reporter):
         f"👤 <b>ผู้แจ้ง:</b> {reporter.full_name} ({reporter.department})\n"
         f"{inhouse_flag}"
         f"─────────────────────\n"
-        f"⏰ สถานะ: {STATUS_TH['pending']}"
+        f"⏰ สถานะ: {STATUS_TH['pending']}\n"
+        f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>"
     )
 
     targets = _targets(s.TELEGRAM_GROUP_ALL, s.TELEGRAM_GROUP_REPORTER)
@@ -113,6 +123,7 @@ def notify_status_change(request, old_status: str, new_status: str, changed_by, 
     old_th = STATUS_TH.get(old_status, old_status)
     new_th = STATUS_TH.get(new_status, new_status)
 
+    link = f"{_app_base_url()}/requests/{request.id}"
     text = (
         f"🔄 <b>สถานะงานเปลี่ยน</b>  |  {request.request_number}\n"
         f"─────────────────────\n"
@@ -121,7 +132,8 @@ def notify_status_change(request, old_status: str, new_status: str, changed_by, 
         f"📊 <b>สถานะ:</b> {old_th} → {new_th}\n"
         f"👤 <b>โดย:</b> {changed_by.full_name}\n"
         + (f"💬 <b>หมายเหตุ:</b> {note}\n" if note else "")
-        + f"─────────────────────"
+        + f"─────────────────────\n"
+        + f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>"
     )
 
     # เลือก group ตามสถานะใหม่

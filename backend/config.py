@@ -5,7 +5,8 @@ from functools import lru_cache
 class Settings(BaseSettings):
     SECRET_KEY: str = "changeme-use-strong-secret-in-production"
     APP_URL: str = "http://localhost:8000"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12  # 12 hours
+    ALLOWED_ORIGINS: str = "*"  # production: set to "https://your-domain.railway.app"
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_GROUP_REPORTER: str = ""

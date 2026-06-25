@@ -34,11 +34,16 @@ def is_cloudinary_enabled() -> bool:
     return _configured
 
 
+def _is_railway() -> bool:
+    return bool(os.environ.get("RAILWAY_PUBLIC_DOMAIN"))
+
+
 def upload_image(file_bytes: bytes, folder: str = "hotel-maintenance") -> str:
     """
     อัปโหลดรูป → คืน URL ที่เข้าถึงได้
     - ถ้ามี Cloudinary → อัปโหลดขึ้น cloud, คืน https://res.cloudinary.com/...
-    - ถ้าไม่มี → บันทึก local, คืน /uploads/filename
+    - ถ้าไม่มี และอยู่บน Railway → raise error (local storage ไม่ persist)
+    - ถ้าไม่มี และ dev local → บันทึก local, คืน /uploads/filename
     """
     _configure()
 
@@ -55,15 +60,23 @@ def upload_image(file_bytes: bytes, folder: str = "hotel-maintenance") -> str:
             logger.info(f"Uploaded to Cloudinary: {url}")
             return url
         except Exception as e:
-            logger.error(f"Cloudinary upload failed: {e} — falling back to local")
+            logger.error(f"Cloudinary upload failed: {e}")
+            raise RuntimeError(f"อัปโหลดรูปล้มเหลว: {e}")
 
-    # Fallback: local storage
+    if _is_railway():
+        raise RuntimeError(
+            "ไม่สามารถบันทึกรูปภาพได้ — กรุณาตั้งค่า CLOUDINARY_CLOUD_NAME, "
+            "CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET ใน Railway environment variables"
+        )
+
+    # Local dev fallback only
     import uuid
     os.makedirs("uploads", exist_ok=True)
     filename = f"{uuid.uuid4().hex}.jpg"
     path = os.path.join("uploads", filename)
     with open(path, "wb") as f:
         f.write(file_bytes)
+    logger.info(f"Saved locally: {path}")
     return f"/uploads/{filename}"
 
 

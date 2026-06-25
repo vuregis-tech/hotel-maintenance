@@ -20,6 +20,100 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+_AREAS_DATA = [
+    ("SGH F1", ["120", "121", "122", "123", "124", "Corridor", "SGH Reception"]),
+    ("SGH F2", ["220", "221", "222", "223", "224", "225", "226", "227", "228", "229", "230", "231", "Server Room", "Corridor", "HK SGH2"]),
+    ("SGH F3", ["320", "321", "322", "323", "324", "325", "326", "327", "328", "329", "330", "331", "HK SGH3", "Shower Room", "Corridor"]),
+    ("SGH F4", ["420", "421", "422", "423", "424", "425", "426", "427", "428", "429", "430", "431", "Associate Accomd.", "Corridor", "HK SGH4"]),
+    ("PSG F1", ["180", "181", "182", "183", "184", "185", "186", "187", "188", "Corridor"]),
+    ("PSG F2", ["280", "281", "282", "283", "284", "285", "286", "287", "288", "Corridor"]),
+    ("PSG F3", ["380", "381", "382", "383", "384", "385", "386", "387", "388", "Penthouse F3", "Corridor"]),
+    ("PSG F4", ["480", "481", "482", "483", "484", "485", "486", "487", "488", "Penthouse F4", "Corridor"]),
+    ("BOH", ["Front Office", "ACC Office", "RSVN Office", "SM Office", "HK Office", "FB Office", "Main Kitchen", "Staff Canteen", "EN Office", "EN GEN room", "PSG Spa room", "PSG Pool toilet"]),
+    ("Common Area", ["Lobby", "Pool SGH", "Pool PSG", "Main Hotel Entrance", "Parking", "7/11 rooftop"]),
+    ("Rooftop", ["SGH rooftop", "PSG rooftop"]),
+    ("Toilet", ["Guest F1", "Guest F2", "Staff F1", "Staff F2", "Staff F3", "Staff F4"]),
+    ("Elevator", ["SGH", "Lobby", "Admin", "HK service", "FB Service"]),
+    ("PSG Basement Store", ["Owner 1", "Owner 2", "Owner 3", "FB", "HK"]),
+    ("Other", ["Other"]),
+]
+
+_ISSUE_TYPES = [
+    "Air-Con", "Television", "Bathroom", "Jacuzzi", "Furniture/Fitting",
+    "Ceiling", "Wall", "Pantry", "Telephone", "Plumbing", "Piping",
+    "Flooring", "Electric component", "Fuse & Wiring", "Internet/Wifi",
+    "Door & Door Lock", "Safety Box", "CCTV", "Handrail",
+    "Fire Alarm equipment", "Chiller", "General / Other",
+]
+
+# (full_name, position, department, username)  — all Staff, must_change_password=True
+_USERS_DATA = [
+    ("Chatchaya Jearranai", "Hotel Manager", "Admin & General", "chatchayaj"),
+    ("Chudaporn Thitathan", "Asst. Financial Controller", "Admin & General", "chudapornt"),
+    ("Potjanee Towsun", "Assistant Chief Accountant", "Admin & General", "potjaneet"),
+    ("Yothakant Phaknithiphan", "Accounting Executive", "Admin & General", "yothakantp"),
+    ("Weerasak Pannarangsee", "Purchasing and Store Officer", "Admin & General", "weerasakp"),
+    ("Warittha Saengnark", "Human Capital Manager", "Admin & General", "waritthas"),
+    ("Chumphon Phasomsup", "Assistant Quality & Sustainability Manager", "Admin & General", "chumphonp"),
+    ("Boonchuay Songnak", "Assistant Chief Engineer", "Engineering", "boonchuays"),
+    ("Than Win Tun", "General Technician", "Engineering", "thanw"),
+    ("Prayong Aukum", "Duty Engineering", "Engineering", "prayonga"),
+    ("Thant Zin Oo", "General Technician", "Engineering", "thantz"),
+    ("Zayar Lin Htut", "General Technician", "Engineering", "zayarl"),
+    ("Nyi Nyi", "General Technician", "Engineering", "nyin"),
+    ("Chan Yoong Shen", "Front Office Duty Manager", "Front Office", "chany"),
+    ("Suchatit Hanchana", "Front Office Duty Manager", "Front Office", "suchatith"),
+    ("Surapong Kumuda", "Hommate", "Front Office", "surapongk"),
+    ("Thet Tun", "Hommate", "Front Office", "thett"),
+    ("Ashik Kottiyarakkal Hydrosse", "Hommate", "Front Office", "ashikk"),
+    ("Maneerat Thonghom", "Hommate", "Front Office", "maneeratt"),
+    ("Thanutcha Traijapo", "Hommate", "Front Office", "thanutchat"),
+    ("Chinnawat Nakkaew", "Hommate", "Front Office", "chinnawatn"),
+    ("Yupa Maneelum", "Housekeeping Supervisor", "Housekeeping", "yupam"),
+    ("Jutharat Pecharat", "Floor Supervisor", "Housekeeping", "jutharatp"),
+    ("Nyo Nyo Sam", "Floor Supervisor", "Housekeeping", "nyon"),
+    ("Htay Aung", "Housekeeping Attendant", "Housekeeping", "htaya"),
+    ("Nu Nu Win", "Housekeeping Attendant", "Housekeeping", "nun"),
+    ("Thi Thi Aye", "Housekeeping Attendant", "Housekeeping", "thit"),
+    ("San Thidar Win", "Housekeeping Attendant", "Housekeeping", "sant"),
+    ("Saung Hnin Oo", "Housekeeping Attendant", "Housekeeping", "saungh"),
+    ("Htike Htike Tun", "Housekeeping Attendant", "Housekeeping", "htikeh"),
+    ("Thoung Htoo", "Housekeeping Attendant", "Housekeeping", "thoungh"),
+    ("Win Yi", "Housekeeping Attendant", "Housekeeping", "winy"),
+    ("Tin Shwe", "Housekeeping Attendant", "Housekeeping", "tins"),
+    ("Aye Mon", "Housekeeping Attendant", "Housekeeping", "ayem"),
+    ("San Moe Win", "Housekeeping Attendant", "Housekeeping", "sanm"),
+    ("Hnin Nwe", "Housekeeping Attendant", "Housekeeping", "hninn"),
+    ("Thin Thin Mon", "Housekeeping Attendant", "Housekeeping", "thint"),
+    ("Htet Paing Oo", "Housekeeping Attendant", "Housekeeping", "htetp"),
+    ("Aung San Htwe", "Housekeeping Attendant", "Housekeeping", "aungs"),
+    ("Thi Da Soe", "Housekeeping Attendant", "Housekeeping", "thid"),
+    ("Natthanicha Art-on", "Asst. Reservation and Revenue Manager", "Reservations", "natthanichaa"),
+    ("Salinee Hokpeenong", "Reservation & Sales Executive", "Reservations", "salineeh"),
+    ("Phattaraporn Usamanwet", "Sales & E-Commerce Manager", "Sales & Marketing", "phattarapornu"),
+    ("Aumaporn Chaum-jan", "Marketing & Communication Executive", "Sales & Marketing", "aumapornc"),
+    ("Nutdanai Loylib", "Assistant Restaurant Manager", "Food & Beverage", "nutdanail"),
+    ("Chainarong Nimdum", "F&B Captain", "Food & Beverage", "chainarongn"),
+    ("Khin Maung Win", "F&B Host", "Food & Beverage", "khinm"),
+    ("Nyan Lin Aung", "Waiter", "Food & Beverage", "nyanl"),
+    ("Kotchawan Tongboon", "Waitress", "Food & Beverage", "kotchawant"),
+    ("Nichapha Saenaunruean", "Waitress", "Food & Beverage", "nichaphas"),
+    ("Khwanruedee Hadda", "Waitress", "Food & Beverage", "khwanruedeeh"),
+    ("Myint Zaw Lin", "Waiter", "Food & Beverage", "myintz"),
+    ("Nopporn Binmart", "Sous Chef", "Culinary or Kitchen", "noppornb"),
+    ("Monnapa Ropkan", "Demi Chef de Partie", "Culinary or Kitchen", "monnapar"),
+    ("Zaw Zaw Aung", "Commis Chef", "Culinary or Kitchen", "zawz"),
+    ("Tin Moe Tun", "Commis Chef", "Culinary or Kitchen", "tinm"),
+    ("Atcharapun Luksanasut", "Commis Chef", "Culinary or Kitchen", "atcharapunl"),
+    ("Saengravee Seethong", "Commis Chef", "Culinary or Kitchen", "saengravees"),
+    ("Boonyarit Limsakul", "Kitchen Helper", "Culinary or Kitchen", "boonyaritl"),
+    ("Watsana Watthanasan", "Kitchen Helper", "Culinary or Kitchen", "watsanaw"),
+    ("Thanayut Wangma", "Steward", "Culinary or Kitchen", "thanayutw"),
+]
+
+_INITIAL_PASSWORD = "12345"  # users must change on first login
+
+
 def seed_data():
     db = SessionLocal()
     try:
@@ -28,53 +122,45 @@ def seed_data():
             admin = User(
                 username="admin",
                 password_hash=hash_password("admin1234"),
-                full_name="ผู้ดูแลระบบ",
+                full_name="System Administrator",
                 department="IT",
                 position="System Administrator",
                 role="admin",
+                must_change_password=False,
             )
             db.add(admin)
             logger.info("Created default admin: admin / admin1234")
 
-        # Seed default main areas
+        # Seed users from config
+        if db.query(User).filter(User.username != "admin").count() == 0:
+            pw_hash = hash_password(_INITIAL_PASSWORD)
+            for full_name, position, department, username in _USERS_DATA:
+                db.add(User(
+                    username=username.strip(),
+                    password_hash=pw_hash,
+                    full_name=full_name.strip(),
+                    department=department.strip(),
+                    position=position.strip(),
+                    role="staff",
+                    must_change_password=True,
+                ))
+            logger.info(f"Seeded {len(_USERS_DATA)} users from config")
+
+        # Seed main areas + sub areas
         if db.query(MainArea).count() == 0:
-            areas_data = [
-                ("ห้องพัก", ["ชั้น 1", "ชั้น 2", "ชั้น 3", "ชั้น 4", "ชั้น 5"]),
-                ("ล็อบบี้", ["ส่วนต้อนรับ", "โถงทางเดิน", "ลิฟต์"]),
-                ("ร้านอาหาร", ["ห้องอาหารหลัก", "ครัว", "บาร์"]),
-                ("สระว่ายน้ำ", ["สระผู้ใหญ่", "สระเด็ก", "ห้องเปลี่ยนเสื้อผ้า"]),
-                ("ฟิตเนส", ["ห้องออกกำลังกาย", "ห้องอบไอน้ำ"]),
-                ("주차场", ["ชั้น B1", "ชั้น B2"]),
-                ("พื้นที่ส่วนกลาง", ["ห้องประชุม", "ห้องอเนกประสงค์", "ห้องน้ำสาธารณะ"]),
-                ("พื้นที่หลังบ้าน", ["ห้องซักรีด", "ห้องเก็บของ", "ห้องเครื่อง"]),
-            ]
-            for area_name, subs in areas_data:
-                area = MainArea(name=area_name)
+            for i, (area_name, subs) in enumerate(_AREAS_DATA):
+                area = MainArea(name=area_name, sort_order=i)
                 db.add(area)
                 db.flush()
-                for sub_name in subs:
-                    db.add(SubArea(name=sub_name, main_area_id=area.id))
-            logger.info("Seeded default areas")
+                for j, sub_name in enumerate(subs):
+                    db.add(SubArea(name=str(sub_name), main_area_id=area.id, sort_order=j))
+            logger.info(f"Seeded {len(_AREAS_DATA)} main areas from config")
 
-        # Seed default issue types
+        # Seed issue types
         if db.query(IssueType).count() == 0:
-            issue_names = [
-                "ไฟฟ้า/แสงสว่าง",
-                "ประปา/น้ำรั่ว",
-                "เครื่องปรับอากาศ",
-                "เฟอร์นิเจอร์/อุปกรณ์",
-                "ประตู/หน้าต่าง/กุญแจ",
-                "โทรทัศน์/รีโมท",
-                "ตู้เย็น/ไมโครเวฟ",
-                "ระบบอินเทอร์เน็ต",
-                "ระบบโทรศัพท์",
-                "ระบบสุขาภิบาล",
-                "ลิฟต์/บันได",
-                "ทั่วไป",
-            ]
-            for name in issue_names:
-                db.add(IssueType(name=name))
-            logger.info("Seeded default issue types")
+            for i, name in enumerate(_ISSUE_TYPES):
+                db.add(IssueType(name=name, sort_order=i))
+            logger.info(f"Seeded {len(_ISSUE_TYPES)} issue types from config")
 
         db.commit()
     finally:
@@ -105,6 +191,12 @@ def run_migrations():
         ("work_orders", "ooo_notified_user_id", "INTEGER"),
         # Feature 6: แผนกที่แสดงชื่อใน dropdown ผู้รับแจ้ง OOO
         ("departments", "show_in_ooo", "BOOLEAN DEFAULT FALSE"),
+        # Feature 7: sort order for areas and issue types
+        ("main_areas", "sort_order", "INTEGER DEFAULT 0"),
+        ("sub_areas", "sort_order", "INTEGER DEFAULT 0"),
+        ("issue_types", "sort_order", "INTEGER DEFAULT 0"),
+        # Security: force password change on first login
+        ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:
@@ -150,9 +242,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Hotel Maintenance System", version="2.0.0", lifespan=lifespan)
 
+_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -220,6 +313,24 @@ async def telegram_test():
             except Exception as e:
                 result["send_result"][cid] = {"error": str(e)}
     return result
+
+@app.get("/api/system/storage-status")
+async def storage_status():
+    """ตรวจสอบการตั้งค่า storage"""
+    from .services.storage import is_cloudinary_enabled
+    on_railway = bool(os.environ.get("RAILWAY_PUBLIC_DOMAIN"))
+    cloud_ok = is_cloudinary_enabled()
+    return {
+        "cloudinary_enabled": cloud_ok,
+        "on_railway": on_railway,
+        "storage_type": "cloudinary" if cloud_ok else ("local (ephemeral — ใช้บน Railway ไม่ได้)" if on_railway else "local"),
+        "warning": (
+            None if cloud_ok else
+            "Cloudinary ยังไม่ได้ตั้งค่า — รูปภาพจะหายหลัง deploy ใหม่ กรุณาตั้งค่า CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET"
+            if on_railway else
+            "Cloudinary ยังไม่ได้ตั้งค่า — ใช้ local storage (ใช้ได้สำหรับ dev เท่านั้น)"
+        ),
+    }
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("frontend", exist_ok=True)

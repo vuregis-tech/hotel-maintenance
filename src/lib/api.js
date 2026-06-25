@@ -1,5 +1,15 @@
 const BASE = ''  // use Vite proxy — /api/* and /uploads/* are proxied to backend
 
+// แปลง date+hour+minute → ISO string พร้อม local timezone offset เช่น "2026-06-15T14:30:00+07:00"
+export function schedToISO(date, hour, minute) {
+  if (!date) return null
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+  const mm = String(Math.abs(off) % 60).padStart(2, '0')
+  return `${date}T${hour}:${minute}:00${sign}${hh}:${mm}`
+}
+
 // แปลง filename/URL จาก DB → URL ที่แสดงใน browser
 // รองรับ: Cloudinary URL (https://...), local path (/uploads/xxx), filename เก่า (xxx.jpg)
 export function imgUrl(filename) {
@@ -54,15 +64,18 @@ export const api = {
   createArea: (data) => request('POST', '/api/areas', data),
   updateArea: (id, data) => request('PUT', `/api/areas/${id}`, data),
   deleteArea: (id) => request('DELETE', `/api/areas/${id}`),
+  reorderAreas: (ids) => request('PUT', '/api/areas/reorder', { ids }),
   createSubArea: (data) => request('POST', '/api/areas/sub', data),
   updateSubArea: (id, data) => request('PUT', `/api/areas/sub/${id}`, data),
   deleteSubArea: (id) => request('DELETE', `/api/areas/sub/${id}`),
+  reorderSubAreas: (ids) => request('PUT', '/api/areas/sub/reorder', { ids }),
 
   // Issue Types
   getIssueTypes: () => request('GET', '/api/issue-types'),
   createIssueType: (data) => request('POST', '/api/issue-types', data),
   updateIssueType: (id, data) => request('PUT', `/api/issue-types/${id}`, data),
   deleteIssueType: (id) => request('DELETE', `/api/issue-types/${id}`),
+  reorderIssueTypes: (ids) => request('PUT', '/api/issue-types/reorder', { ids }),
 
   // Jobs
   getJobs: (params = {}) => {
@@ -113,6 +126,12 @@ export const api = {
   // On-duty today (convenience)
   getOnDutyToday: () => request('GET', '/api/onduty'),
 
+  // System
+  getStorageStatus: () => request('GET', '/api/system/storage-status'),
+
+  // Auth extras
+  changePassword: (data) => request('POST', '/api/auth/change-password', data),
+
   // Reports
   getReportSummary: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
@@ -137,5 +156,9 @@ export const api = {
   getStaffKpi: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
     return request('GET', `/api/reports/staff-kpi${qs ? `?${qs}` : ''}`)
+  },
+  getMaterialsReport: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString()
+    return request('GET', `/api/reports/materials${qs ? `?${qs}` : ''}`)
   },
 }

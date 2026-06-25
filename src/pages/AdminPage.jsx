@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useLang } from '../context/LangContext'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check } from 'lucide-react'
-
-const ROLE_OPTIONS = [
-  { value: 'admin', label: 'ผู้ดูแลระบบ' },
-  { value: 'supervisor', label: 'หัวหน้าช่าง' },
-  { value: 'technician', label: 'ช่าง' },
-  { value: 'staff', label: 'พนักงาน' },
-]
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive } from 'lucide-react'
 
 // ─── Mini reusable inline edit row ───────────────────
-function EditableItem({ name, onSave, onDelete, children }) {
+function EditableItem({ name, onSave, onDelete, onMoveUp, onMoveDown, children }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(name)
 
@@ -31,7 +25,13 @@ function EditableItem({ name, onSave, onDelete, children }) {
   )
 
   return (
-    <div className="flex items-center gap-2 py-1.5 group">
+    <div className="flex items-center gap-1 py-1.5 group">
+      {(onMoveUp || onMoveDown) && (
+        <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <button onClick={onMoveUp} disabled={!onMoveUp} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowUp className="w-3 h-3" /></button>
+          <button onClick={onMoveDown} disabled={!onMoveDown} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowDown className="w-3 h-3" /></button>
+        </div>
+      )}
       <span className="flex-1 text-sm text-gray-800">{name}</span>
       {children}
       <button onClick={() => setEditing(true)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded opacity-0 group-hover:opacity-100 transition-opacity">
@@ -46,11 +46,12 @@ function EditableItem({ name, onSave, onDelete, children }) {
 
 // ─── Departments Tab ──────────────────────────────────
 function DepartmentsTab() {
+  const { t } = useLang()
   const [depts, setDepts] = useState([])
   const [newName, setNewName] = useState('')
 
   useEffect(() => {
-    api.getDepartments().then(setDepts).catch(err => toast.error('โหลดแผนกไม่ได้: ' + err.message))
+    api.getDepartments().then(setDepts).catch(err => toast.error(err.message))
   }, [])
 
   async function add() {
@@ -59,44 +60,44 @@ function DepartmentsTab() {
       const d = await api.createDepartment({ name: newName.trim() })
       setDepts(x => [...x, d])
       setNewName('')
-      toast.success('เพิ่มแผนกสำเร็จ')
+      toast.success(t('admin.department.addSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
   async function del(id) {
-    if (!confirm('ลบแผนกนี้?')) return
-    try { await api.deleteDepartment(id); setDepts(d => d.filter(x => x.id !== id)); toast.success('ลบสำเร็จ') }
+    if (!confirm(t('admin.department.confirmDelete'))) return
+    try { await api.deleteDepartment(id); setDepts(d => d.filter(x => x.id !== id)); toast.success(t('admin.department.deleteSuccess')) }
     catch (err) { toast.error(err.message) }
   }
 
   async function save(id, name) {
     await api.updateDepartment(id, { name })
     setDepts(d => d.map(x => x.id === id ? { ...x, name } : x))
-    toast.success('แก้ไขสำเร็จ')
+    toast.success(t('admin.department.editSuccess'))
   }
 
   async function toggleOOO(id, checked) {
     try {
       await api.updateDepartment(id, { show_in_ooo: checked })
       setDepts(d => d.map(x => x.id === id ? { ...x, show_in_ooo: checked } : x))
-      toast.success(checked ? 'เปิดแสดงชื่อตอนปิด OOO' : 'ปิดแสดงชื่อตอนปิด OOO')
+      toast.success(checked ? t('admin.department.showInOOO') : t('admin.department.editSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
   return (
     <div>
-      <h2 className="font-semibold text-gray-900 mb-4">จัดการแผนก</h2>
+      <h2 className="font-semibold text-gray-900 mb-4">{t('admin.department.title')}</h2>
       <div className="flex gap-2 mb-4">
         <input value={newName} onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && add()}
-          placeholder="ชื่อแผนกใหม่"
+          placeholder={t('admin.department.namePlaceholder')}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={add} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          <Plus className="w-4 h-4" /> เพิ่ม
+          <Plus className="w-4 h-4" /> {t('common.add')}
         </button>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {depts.length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">ยังไม่มีแผนก</p>}
+        {depts.length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">{t('admin.department.noData')}</p>}
         {depts.map(d => (
           <div key={d.id} className="px-4">
             <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)}>
@@ -104,7 +105,7 @@ function DepartmentsTab() {
                 <input type="checkbox" checked={!!d.show_in_ooo}
                   onChange={e => toggleOOO(d.id, e.target.checked)}
                   className="w-3.5 h-3.5 text-blue-600 rounded" />
-                แสดงชื่อตอนปิด OOO
+                {t('admin.department.showInOOO')}
               </label>
             </EditableItem>
           </div>
@@ -116,6 +117,7 @@ function DepartmentsTab() {
 
 // ─── Users Tab ────────────────────────────────────────
 function UsersTab() {
+  const { t } = useLang()
   const [users, setUsers] = useState([])
   const [depts, setDepts] = useState([])
   const [showForm, setShowForm] = useState(false)
@@ -123,46 +125,66 @@ function UsersTab() {
   const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' })
   const [saving, setSaving] = useState(false)
 
+  const ROLE_OPTIONS = [
+    { value: 'admin', label: t('admin.user.roles.admin') },
+    { value: 'supervisor', label: t('admin.user.roles.supervisor') },
+    { value: 'technician', label: t('admin.user.roles.technician') },
+    { value: 'staff', label: t('admin.user.roles.staff') },
+  ]
+
+  const ROLE_LABELS = {
+    admin: t('admin.user.roles.admin'),
+    supervisor: t('admin.user.roles.supervisor'),
+    technician: t('admin.user.roles.technician'),
+    staff: t('admin.user.roles.staff'),
+  }
+
+  const ROLE_COLORS = { admin: 'bg-purple-100 text-purple-700', supervisor: 'bg-orange-100 text-orange-700', technician: 'bg-green-100 text-green-700', staff: 'bg-blue-100 text-blue-700' }
+
   useEffect(() => {
     api.getUsers().then(setUsers)
     api.getDepartments().then(setDepts).catch(() => {})
   }, [])
 
   function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
-  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role }); setEditUser(u); setShowForm(true) }
+  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active }); setEditUser(u); setShowForm(true) }
 
   async function handleSave() {
-    if (!form.full_name || !form.username || (!editUser && !form.password)) return toast.error('กรุณากรอกข้อมูลให้ครบ')
+    if (!form.full_name || !form.username || (!editUser && !form.password)) return toast.error(t('common.required'))
     setSaving(true)
     try {
       if (editUser) {
-        const updated = await api.updateUser(editUser.id, { full_name: form.full_name, department: form.department, position: form.position, role: form.role, ...(form.password ? { password: form.password } : {}) })
+        const updated = await api.updateUser(editUser.id, { full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) })
         setUsers(u => u.map(x => x.id === editUser.id ? updated : x))
       } else {
         const created = await api.createUser(form)
         setUsers(u => [...u, created])
       }
       setShowForm(false)
-      toast.success(editUser ? 'แก้ไขสำเร็จ' : 'เพิ่มผู้ใช้สำเร็จ')
+      toast.success(editUser ? t('admin.department.editSuccess') : t('admin.user.addUser') + ' ' + t('common.success'))
     } catch (err) { toast.error(err.message) }
     finally { setSaving(false) }
   }
 
   async function handleDelete(u) {
-    if (!confirm(`ลบผู้ใช้ ${u.full_name}?`)) return
-    try { await api.deleteUser(u.id); setUsers(us => us.filter(x => x.id !== u.id)); toast.success('ลบสำเร็จ') }
+    if (!confirm(`${t('admin.user.confirmDelete')}${u.full_name}?`)) return
+    try { await api.deleteUser(u.id); setUsers(us => us.filter(x => x.id !== u.id)); toast.success(t('admin.department.deleteSuccess')) }
     catch (err) { toast.error(err.message) }
   }
 
-  const ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', supervisor: 'หัวหน้าช่าง', technician: 'ช่าง', staff: 'พนักงาน' }
-  const ROLE_COLORS = { admin: 'bg-purple-100 text-purple-700', supervisor: 'bg-orange-100 text-orange-700', technician: 'bg-green-100 text-green-700', staff: 'bg-blue-100 text-blue-700' }
+  const formFields = [
+    ['full_name', t('admin.user.fullName'), 'text'],
+    ['username', t('admin.user.username'), 'text'],
+    ['password', editUser ? t('admin.user.passwordChangeHint') : t('admin.user.password'), 'password'],
+    ['position', t('admin.user.position'), 'text'],
+  ]
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-gray-900">ผู้ใช้งานระบบ ({users.length})</h2>
+        <h2 className="font-semibold text-gray-900">{t('admin.user.usersTitle')} ({users.length})</h2>
         <button onClick={openNew} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
-          <Plus className="w-4 h-4" /> เพิ่มผู้ใช้
+          <Plus className="w-4 h-4" /> {t('admin.user.addUser')}
         </button>
       </div>
 
@@ -170,7 +192,15 @@ function UsersTab() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['ชื่อ', 'ชื่อผู้ใช้', 'ตำแหน่ง', 'แผนก', 'บทบาท', 'สถานะ', ''].map(h => (
+              {[
+                t('admin.user.tableHeaders.name'),
+                t('admin.user.tableHeaders.username'),
+                t('admin.user.tableHeaders.position'),
+                t('admin.user.tableHeaders.department'),
+                t('admin.user.tableHeaders.role'),
+                t('admin.user.tableHeaders.status'),
+                '',
+              ].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500">{h}</th>
               ))}
             </tr>
@@ -183,7 +213,7 @@ function UsersTab() {
                 <td className="px-4 py-3 text-gray-600">{u.position}</td>
                 <td className="px-4 py-3 text-gray-600">{u.department}</td>
                 <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[u.role]}`}>{ROLE_LABELS[u.role]}</span></td>
-                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{u.is_active ? 'ใช้งาน' : 'ระงับ'}</span></td>
+                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{u.is_active ? t('admin.user.active') : t('admin.user.inactive')}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5" /></button>
@@ -199,9 +229,9 @@ function UsersTab() {
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="font-semibold text-gray-900 mb-4">{editUser ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}</h3>
+            <h3 className="font-semibold text-gray-900 mb-4">{editUser ? t('admin.user.editUser') : t('admin.user.newUserTitle')}</h3>
             <div className="space-y-3">
-              {[['full_name', 'ชื่อ-นามสกุล', 'text'], ['username', 'ชื่อผู้ใช้', 'text'], ['password', editUser ? 'รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)' : 'รหัสผ่าน', 'password'], ['position', 'ตำแหน่ง', 'text']].map(([f, label, type]) => (
+              {formFields.map(([f, label, type]) => (
                 <div key={f}>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">{label}</label>
                   <input type={type} value={form[f]} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
@@ -210,18 +240,18 @@ function UsersTab() {
                 </div>
               ))}
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">แผนก</label>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">{t('admin.user.department')}</label>
                 <select value={form.department} onChange={e => setForm(x => ({ ...x, department: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">-- เลือกแผนก --</option>
+                  <option value="">{t('admin.user.selectDept')}</option>
                   {depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                   {form.department && !depts.find(d => d.name === form.department) && (
-                    <option value={form.department}>{form.department} (เดิม)</option>
+                    <option value={form.department}>{form.department}</option>
                   )}
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">บทบาท</label>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">{t('admin.user.role')}</label>
                 <select value={form.role} onChange={e => setForm(x => ({ ...x, role: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -232,15 +262,15 @@ function UsersTab() {
                   <input type="checkbox" checked={form.is_active ?? true}
                     onChange={e => setForm(x => ({ ...x, is_active: e.target.checked }))}
                     className="w-4 h-4 rounded" />
-                  <span className="text-sm text-gray-700">บัญชีใช้งานได้</span>
+                  <span className="text-sm text-gray-700">{t('admin.user.activeAccount')}</span>
                 </label>
               )}
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">ยกเลิก</button>
+              <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">{t('common.cancel')}</button>
               <button onClick={handleSave} disabled={saving}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
-                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                {saving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>
@@ -252,10 +282,15 @@ function UsersTab() {
 
 // ─── Areas Tab ────────────────────────────────────────
 function AreasTab() {
+  const { t } = useLang()
   const [areas, setAreas] = useState([])
   const [expanded, setExpanded] = useState({})
   const [newAreaName, setNewAreaName] = useState('')
   const [newSubName, setNewSubName] = useState({})
+  const [editAreaId, setEditAreaId] = useState(null)
+  const [editAreaName, setEditAreaName] = useState('')
+  const [editSubId, setEditSubId] = useState(null)
+  const [editSubName, setEditSubName] = useState('')
 
   useEffect(() => { api.getAreas().then(setAreas) }, [])
 
@@ -265,7 +300,7 @@ function AreasTab() {
       const a = await api.createArea({ name: newAreaName })
       setAreas(x => [...x, a])
       setNewAreaName('')
-      toast.success('เพิ่มพื้นที่สำเร็จ')
+      toast.success(t('admin.area.addSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
@@ -276,66 +311,166 @@ function AreasTab() {
       const sub = await api.createSubArea({ name, main_area_id: areaId })
       setAreas(areas => areas.map(a => a.id === areaId ? { ...a, sub_areas: [...(a.sub_areas || []), sub] } : a))
       setNewSubName(x => ({ ...x, [areaId]: '' }))
-      toast.success('เพิ่มพื้นที่ย่อยสำเร็จ')
+      toast.success(t('admin.area.addSubSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
   async function deleteArea(id) {
-    if (!confirm('ลบพื้นที่หลักนี้?')) return
-    try { await api.deleteArea(id); setAreas(a => a.filter(x => x.id !== id)); toast.success('ลบสำเร็จ') }
+    if (!confirm(t('admin.area.confirmDeleteArea'))) return
+    try { await api.deleteArea(id); setAreas(a => a.filter(x => x.id !== id)); toast.success(t('admin.area.deleteSuccess')) }
     catch (err) { toast.error(err.message) }
   }
 
   async function deleteSub(areaId, subId) {
-    if (!confirm('ลบพื้นที่ย่อยนี้?')) return
+    if (!confirm(t('admin.area.confirmDeleteSub'))) return
     try {
       await api.deleteSubArea(subId)
       setAreas(areas => areas.map(a => a.id === areaId ? { ...a, sub_areas: a.sub_areas.filter(s => s.id !== subId) } : a))
-      toast.success('ลบสำเร็จ')
+      toast.success(t('admin.area.deleteSuccess'))
     } catch (err) { toast.error(err.message) }
+  }
+
+  async function saveAreaName(id) {
+    if (!editAreaName.trim()) return
+    try {
+      await api.updateArea(id, { name: editAreaName.trim() })
+      setAreas(a => a.map(x => x.id === id ? { ...x, name: editAreaName.trim() } : x))
+      setEditAreaId(null)
+      toast.success(t('admin.area.editSuccess'))
+    } catch (err) { toast.error(err.message) }
+  }
+
+  async function saveSubName(areaId, subId) {
+    if (!editSubName.trim()) return
+    try {
+      await api.updateSubArea(subId, { name: editSubName.trim() })
+      setAreas(areas => areas.map(a => a.id === areaId
+        ? { ...a, sub_areas: a.sub_areas.map(s => s.id === subId ? { ...s, name: editSubName.trim() } : s) }
+        : a))
+      setEditSubId(null)
+      toast.success(t('admin.area.editSuccess'))
+    } catch (err) { toast.error(err.message) }
+  }
+
+  async function moveArea(idx, dir) {
+    const next = [...areas]
+    const target = idx + dir
+    if (target < 0 || target >= next.length) return
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    setAreas(next)
+    try { await api.reorderAreas(next.map(a => a.id)) } catch (err) { toast.error(err.message) }
+  }
+
+  async function moveSub(areaId, subIdx, dir) {
+    let newSubs = []
+    const nextAreas = areas.map(a => {
+      if (a.id !== areaId) return a
+      const subs = a.sub_areas.filter(s => s.is_active)
+      const target = subIdx + dir
+      if (target < 0 || target >= subs.length) return a
+      ;[subs[subIdx], subs[target]] = [subs[target], subs[subIdx]]
+      newSubs = subs
+      return { ...a, sub_areas: subs }
+    })
+    setAreas(nextAreas)
+    if (newSubs.length) {
+      try { await api.reorderSubAreas(newSubs.map(s => s.id)) } catch (err) { toast.error(err.message) }
+    }
   }
 
   return (
     <div>
-      <h2 className="font-semibold text-gray-900 mb-4">จัดการพื้นที่</h2>
+      <h2 className="font-semibold text-gray-900 mb-4">{t('admin.area.title')}</h2>
       <div className="flex gap-2 mb-4">
         <input value={newAreaName} onChange={e => setNewAreaName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && addArea()}
-          placeholder="ชื่อพื้นที่หลักใหม่"
+          placeholder={t('admin.area.namePlaceholder')}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={addArea} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          <Plus className="w-4 h-4" /> เพิ่ม
+          <Plus className="w-4 h-4" /> {t('common.add')}
         </button>
       </div>
 
       <div className="space-y-2">
-        {areas.map(area => (
+        {areas.map((area, idx) => (
           <div key={area.id} className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 cursor-pointer"
-              onClick={() => setExpanded(e => ({ ...e, [area.id]: !e[area.id] }))}>
-              {expanded[area.id] ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-              <span className="flex-1 font-medium text-gray-900 text-sm">{area.name}</span>
-              <span className="text-xs text-gray-400">{area.sub_areas?.length || 0} พื้นที่ย่อย</span>
-              <button onClick={e => { e.stopPropagation(); deleteArea(area.id) }}
-                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded ml-2">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+            {/* Area header row */}
+            <div className="flex items-center gap-2 px-3 py-3 bg-gray-50 group">
+              {/* Reorder buttons */}
+              <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                <button onClick={() => moveArea(idx, -1)} disabled={idx === 0} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowUp className="w-3 h-3" /></button>
+                <button onClick={() => moveArea(idx, 1)} disabled={idx === areas.length - 1} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowDown className="w-3 h-3" /></button>
+              </div>
+
+              {editAreaId === area.id ? (
+                <>
+                  <input value={editAreaName} onChange={e => setEditAreaName(e.target.value)} autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') saveAreaName(area.id); if (e.key === 'Escape') setEditAreaId(null) }}
+                    className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button onClick={() => saveAreaName(area.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setEditAreaId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setExpanded(e => ({ ...e, [area.id]: !e[area.id] }))}
+                    className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    {expanded[area.id] ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                    <span className="font-medium text-gray-900 text-sm truncate">{area.name}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{area.sub_areas?.filter(s => s.is_active).length || 0} {t('admin.area.subAreaCount')}</span>
+                  </button>
+                  <button onClick={() => { setEditAreaId(area.id); setEditAreaName(area.name) }}
+                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => deleteArea(area.id)}
+                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
             </div>
+
+            {/* Sub-areas */}
             {expanded[area.id] && (
-              <div className="px-6 py-3 space-y-1">
-                {area.sub_areas?.filter(s => s.is_active).map(sub => (
-                  <div key={sub.id} className="flex items-center gap-2 py-1 group">
-                    <span className="flex-1 text-sm text-gray-700">{sub.name}</span>
-                    <button onClick={() => deleteSub(area.id, sub.id)}
-                      className="p-1 text-gray-300 hover:text-red-500 rounded opacity-0 group-hover:opacity-100">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+              <div className="px-4 py-3 space-y-0.5">
+                {area.sub_areas?.filter(s => s.is_active).map((sub, subIdx) => {
+                  const activeSubs = area.sub_areas.filter(s => s.is_active)
+                  return (
+                    <div key={sub.id} className="flex items-center gap-1 py-1 group/sub">
+                      {/* Sub reorder */}
+                      <div className="flex flex-col opacity-0 group-hover/sub:opacity-100 transition-opacity flex-shrink-0">
+                        <button onClick={() => moveSub(area.id, subIdx, -1)} disabled={subIdx === 0} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowUp className="w-3 h-3" /></button>
+                        <button onClick={() => moveSub(area.id, subIdx, 1)} disabled={subIdx === activeSubs.length - 1} className="p-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-default"><ArrowDown className="w-3 h-3" /></button>
+                      </div>
+
+                      {editSubId === sub.id ? (
+                        <>
+                          <input value={editSubName} onChange={e => setEditSubName(e.target.value)} autoFocus
+                            onKeyDown={e => { if (e.key === 'Enter') saveSubName(area.id, sub.id); if (e.key === 'Escape') setEditSubId(null) }}
+                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <button onClick={() => saveSubName(area.id, sub.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setEditSubId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X className="w-3.5 h-3.5" /></button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm text-gray-700 pl-1">{sub.name}</span>
+                          <button onClick={() => { setEditSubId(sub.id); setEditSubName(sub.name) }}
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => deleteSub(area.id, sub.id)}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
                 <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
                   <input value={newSubName[area.id] || ''} onChange={e => setNewSubName(x => ({ ...x, [area.id]: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && addSub(area.id)}
-                    placeholder="เพิ่มพื้นที่ย่อย"
+                    placeholder={t('admin.area.subAreaPlaceholder')}
                     className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <button onClick={() => addSub(area.id)}
                     className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -353,6 +488,7 @@ function AreasTab() {
 
 // ─── Issue Types Tab ──────────────────────────────────
 function IssueTypesTab() {
+  const { t } = useLang()
   const [types, setTypes] = useState([])
   const [newName, setNewName] = useState('')
 
@@ -361,41 +497,52 @@ function IssueTypesTab() {
   async function add() {
     if (!newName.trim()) return
     try {
-      const t = await api.createIssueType({ name: newName })
-      setTypes(x => [...x, t])
+      const it = await api.createIssueType({ name: newName })
+      setTypes(x => [...x, it])
       setNewName('')
-      toast.success('เพิ่มสำเร็จ')
+      toast.success(t('admin.issueType.addSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
   async function del(id) {
-    if (!confirm('ลบประเภทงานนี้?')) return
-    try { await api.deleteIssueType(id); setTypes(t => t.filter(x => x.id !== id)); toast.success('ลบสำเร็จ') }
+    if (!confirm(t('admin.issueType.confirmDelete'))) return
+    try { await api.deleteIssueType(id); setTypes(tp => tp.filter(x => x.id !== id)); toast.success(t('admin.issueType.deleteSuccess')) }
     catch (err) { toast.error(err.message) }
   }
 
   async function save(id, name) {
     await api.updateIssueType(id, { name })
-    setTypes(t => t.map(x => x.id === id ? { ...x, name } : x))
-    toast.success('แก้ไขสำเร็จ')
+    setTypes(tp => tp.map(x => x.id === id ? { ...x, name } : x))
+    toast.success(t('admin.issueType.editSuccess'))
+  }
+
+  async function move(idx, dir) {
+    const next = [...types]
+    const target = idx + dir
+    if (target < 0 || target >= next.length) return
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    setTypes(next)
+    try { await api.reorderIssueTypes(next.map(x => x.id)) } catch (err) { toast.error(err.message) }
   }
 
   return (
     <div>
-      <h2 className="font-semibold text-gray-900 mb-4">ประเภทงานซ่อม</h2>
+      <h2 className="font-semibold text-gray-900 mb-4">{t('admin.issueType.title')}</h2>
       <div className="flex gap-2 mb-4">
         <input value={newName} onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && add()}
-          placeholder="ชื่อประเภทงานใหม่"
+          placeholder={t('admin.issueType.namePlaceholder')}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={add} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          <Plus className="w-4 h-4" /> เพิ่ม
+          <Plus className="w-4 h-4" /> {t('common.add')}
         </button>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {types.map(t => (
-          <div key={t.id} className="px-4">
-            <EditableItem name={t.name} onSave={name => save(t.id, name)} onDelete={() => del(t.id)} />
+        {types.map((tp, idx) => (
+          <div key={tp.id} className="px-4">
+            <EditableItem name={tp.name} onSave={name => save(tp.id, name)} onDelete={() => del(tp.id)}
+              onMoveUp={idx > 0 ? () => move(idx, -1) : null}
+              onMoveDown={idx < types.length - 1 ? () => move(idx, 1) : null} />
           </div>
         ))}
       </div>
@@ -404,26 +551,52 @@ function IssueTypesTab() {
 }
 
 // ─── Main AdminPage ───────────────────────────────────
+function StorageStatusBanner() {
+  const [status, setStatus] = useState(null)
+  useEffect(() => { api.getStorageStatus().then(setStatus).catch(() => {}) }, [])
+  if (!status) return null
+  if (status.cloudinary_enabled) return (
+    <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
+      <Cloud className="w-4 h-4 text-green-600 flex-shrink-0" />
+      <span><strong>Cloudinary:</strong> เชื่อมต่อแล้ว — รูปภาพจะถูกบันทึกบน Cloud</span>
+    </div>
+  )
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 bg-red-50 border-2 border-red-300 rounded-xl text-sm text-red-800">
+      <CloudOff className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="font-bold">⚠️ Cloudinary ยังไม่ได้ตั้งค่า — รูปภาพจะไม่ถูกบันทึก!</p>
+        <p className="mt-1 text-red-700">{status.warning}</p>
+        <p className="mt-2 text-xs text-red-600 font-mono">กรุณาเพิ่ม environment variables ใน Railway:<br/>
+          CLOUDINARY_CLOUD_NAME · CLOUDINARY_API_KEY · CLOUDINARY_API_SECRET</p>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
+  const { t } = useLang()
   const [tab, setTab] = useState('users')
+
   const tabs = [
-    { key: 'users', label: 'ผู้ใช้งาน' },
-    { key: 'departments', label: 'แผนก' },
-    { key: 'areas', label: 'พื้นที่' },
-    { key: 'issue_types', label: 'ประเภทงาน' },
+    { key: 'users', label: t('admin.tabs.users') },
+    { key: 'departments', label: t('admin.tabs.departments') },
+    { key: 'areas', label: t('admin.tabs.areas') },
+    { key: 'issue_types', label: t('admin.tabs.issueTypes') },
   ]
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
-      <h1 className="text-xl font-bold text-gray-900">จัดการระบบ</h1>
+      <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
+      <StorageStatusBanner />
 
       <div className="flex gap-1 border-b border-gray-200">
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+        {tabs.map(tb => (
+          <button key={tb.key} onClick={() => setTab(tb.key)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              tab === tb.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {t.label}
+            {tb.label}
           </button>
         ))}
       </div>

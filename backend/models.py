@@ -16,6 +16,7 @@ class User(Base):
     # roles: admin, supervisor, technician, staff
     role = Column(String(20), nullable=False, default="staff")
     is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     reported_requests = relationship("MaintenanceRequest", foreign_keys="MaintenanceRequest.reporter_id", back_populates="reporter")
@@ -31,8 +32,9 @@ class MainArea(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
 
-    sub_areas = relationship("SubArea", back_populates="main_area", cascade="all, delete-orphan")
+    sub_areas = relationship("SubArea", back_populates="main_area", cascade="all, delete-orphan", order_by="SubArea.sort_order")
     requests = relationship("MaintenanceRequest", back_populates="main_area")
 
 
@@ -43,6 +45,7 @@ class SubArea(Base):
     main_area_id = Column(Integer, ForeignKey("main_areas.id"), nullable=False)
     name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
 
     main_area = relationship("MainArea", back_populates="sub_areas")
     requests = relationship("MaintenanceRequest", back_populates="sub_area")
@@ -54,6 +57,7 @@ class IssueType(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
 
     requests = relationship("MaintenanceRequest", back_populates="issue_type")
 

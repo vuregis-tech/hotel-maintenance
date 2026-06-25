@@ -1,22 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
 import { format } from 'date-fns'
-import { th } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, User, MapPin, BarChart2, Wrench, Trophy } from 'lucide-react'
-
-// filter key → match function (ทำงานกับ list item จาก API)
-const SUMMARY_FILTERS = {
-  all:                { label: 'ทั้งหมด',          match: () => true },
-  pending:            { label: 'รอรับงาน',         match: j => j.status === 'pending' },
-  assigned:           { label: 'จ่ายงานแล้ว',      match: j => j.status === 'assigned' },
-  in_progress:        { label: 'กำลังดำเนินการ',   match: j => j.status === 'in_progress' },
-  pending_inspection: { label: 'รอตรวจ',           match: j => j.status === 'pending_inspection' },
-  completed:          { label: 'เสร็จสิ้น',         match: j => j.status === 'completed' },
-  reopened:           { label: 'ส่งซ่อมใหม่',      match: j => j.status === 'reopened' },
-  urgent:             { label: 'งานด่วน',           match: j => j.is_urgent },
-}
+import { th as thLocale, enUS } from 'date-fns/locale'
+import { ChevronDown, ChevronRight, User, MapPin, BarChart2, Wrench, Trophy, DoorClosed, Package, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 function getDefaultDates() {
   const today = new Date()
@@ -27,27 +17,28 @@ function getDefaultDates() {
 
 // ── Shared date filter bar ────────────────────────────
 function DateFilter({ dateFrom, dateTo, onFromChange, onToChange, onSearch, onClear, children }) {
+  const { t } = useLang()
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">จากวันที่</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('reports.dateFrom')}</label>
           <input type="date" value={dateFrom} onChange={e => onFromChange(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">ถึงวันที่</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('reports.dateTo')}</label>
           <input type="date" value={dateTo} onChange={e => onToChange(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         {children}
         <button onClick={onSearch}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          ค้นหา
+          {t('reports.search')}
         </button>
         <button onClick={onClear}
           className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-          ล้าง
+          {t('reports.clear')}
         </button>
       </div>
     </div>
@@ -56,6 +47,8 @@ function DateFilter({ dateFrom, dateTo, onFromChange, onToChange, onSearch, onCl
 
 // ── Tab 1: Summary ────────────────────────────────────
 function SummaryTab() {
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
@@ -64,6 +57,26 @@ function SummaryTab() {
   const [loading, setLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedJobId, setSelectedJobId] = useState(null)
+
+  const SUMMARY_FILTERS = {
+    all:                { label: t('reports.stats.all'),              match: () => true },
+    pending:            { label: t('reports.stats.pending'),          match: j => j.status === 'pending' },
+    assigned:           { label: t('reports.stats.assigned'),         match: j => j.status === 'assigned' },
+    in_progress:        { label: t('reports.stats.inProgress'),       match: j => j.status === 'in_progress' },
+    pending_inspection: { label: t('reports.stats.pendingInspection'),match: j => j.status === 'pending_inspection' },
+    completed:          { label: t('reports.stats.completed'),        match: j => j.status === 'completed' },
+    reopened:           { label: t('reports.stats.reopened'),         match: j => j.status === 'reopened' },
+    urgent:             { label: t('reports.stats.urgent'),           match: j => j.is_urgent },
+    external_tech:      { label: t('reports.stats.externalTech'),     match: j => j.status === 'external_tech' },
+    ooo:                { label: t('reports.stats.ooo'),              match: j => {
+      const today = new Date().toISOString().split('T')[0]
+      return j.work_orders?.some(w =>
+        w.ooo_room &&
+        ['assigned', 'in_progress', 'external'].includes(w.status) &&
+        (!w.ooo_end_date || w.ooo_end_date >= today)
+      )
+    }},
+  }
 
   useEffect(() => { loadData() }, [])
 
@@ -84,18 +97,24 @@ function SummaryTab() {
   }
 
   const statCards = summary ? [
-    { key: 'all',                label: 'ทั้งหมด',        value: summary.total,                color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
-    { key: 'pending',            label: 'รอรับงาน',       value: summary.pending,               color: 'bg-yellow-100 text-yellow-700', activeColor: 'ring-yellow-400' },
-    { key: 'assigned',           label: 'จ่ายงานแล้ว',    value: summary.assigned,              color: 'bg-blue-100 text-blue-700',    activeColor: 'ring-blue-400' },
-    { key: 'in_progress',        label: 'กำลังดำเนินการ', value: summary.in_progress,           color: 'bg-indigo-100 text-indigo-700',activeColor: 'ring-indigo-400' },
-    { key: 'pending_inspection', label: 'รอตรวจ',         value: summary.pending_inspection,    color: 'bg-orange-100 text-orange-700',activeColor: 'ring-orange-400' },
-    { key: 'completed',          label: 'เสร็จสิ้น',      value: summary.completed,             color: 'bg-green-100 text-green-700',  activeColor: 'ring-green-400' },
-    { key: 'reopened',           label: 'ส่งซ่อมใหม่',   value: summary.reopened,              color: 'bg-red-100 text-red-700',      activeColor: 'ring-red-400' },
-    { key: 'urgent',             label: 'งานด่วน',        value: summary.urgent_count,          color: 'bg-rose-100 text-rose-700',    activeColor: 'ring-rose-400' },
+    { key: 'all',                label: t('reports.stats.all'),               value: summary.total,               color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
+    { key: 'pending',            label: t('reports.stats.pending'),           value: summary.pending,             color: 'bg-yellow-100 text-yellow-700', activeColor: 'ring-yellow-400' },
+    { key: 'assigned',           label: t('reports.stats.assigned'),          value: summary.assigned,            color: 'bg-blue-100 text-blue-700',    activeColor: 'ring-blue-400' },
+    { key: 'in_progress',        label: t('reports.stats.inProgress'),        value: summary.in_progress,         color: 'bg-indigo-100 text-indigo-700',activeColor: 'ring-indigo-400' },
+    { key: 'pending_inspection', label: t('reports.stats.pendingInspection'), value: summary.pending_inspection,  color: 'bg-orange-100 text-orange-700',activeColor: 'ring-orange-400' },
+    { key: 'completed',          label: t('reports.stats.completed'),         value: summary.completed,           color: 'bg-green-100 text-green-700',  activeColor: 'ring-green-400' },
+    { key: 'reopened',           label: t('reports.stats.reopened'),          value: summary.reopened,            color: 'bg-red-100 text-red-700',      activeColor: 'ring-red-400' },
+    { key: 'urgent',             label: t('reports.stats.urgent'),            value: summary.urgent_count,        color: 'bg-rose-100 text-rose-700',    activeColor: 'ring-rose-400' },
+    { key: 'external_tech',      label: t('reports.stats.externalTech'),      value: summary.external_tech,       color: 'bg-purple-100 text-purple-700',activeColor: 'ring-purple-400' },
+    { key: 'ooo',                label: t('reports.stats.ooo'),               value: summary.ooo_count,           color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
   ] : []
 
-  // กรองรายการตาม activeFilter (client-side)
   const filteredList = list.filter(SUMMARY_FILTERS[activeFilter]?.match ?? (() => true))
+
+  const colHeaders = [
+    t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.area'),
+    t('reports.col.reporter'), t('reports.col.issueType'), t('reports.col.status'), t('reports.col.urgent'),
+  ]
 
   return (
     <>
@@ -106,22 +125,16 @@ function SummaryTab() {
 
         {summary && (
           <>
-            {/* Stat Cards — กดเพื่อ filter */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {statCards.map(c => (
-                <button
-                  key={c.key}
-                  onClick={() => setActiveFilter(c.key)}
+                <button key={c.key} onClick={() => setActiveFilter(c.key)}
                   className={`rounded-xl p-4 text-left transition-all ${c.color} ${
-                    activeFilter === c.key
-                      ? `ring-2 ${c.activeColor} shadow-md scale-[1.02]`
-                      : 'opacity-80 hover:opacity-100 hover:shadow-sm'
-                  }`}
-                >
+                    activeFilter === c.key ? `ring-2 ${c.activeColor} shadow-md scale-[1.02]` : 'opacity-80 hover:opacity-100 hover:shadow-sm'
+                  }`}>
                   <p className="text-xs font-medium opacity-75">{c.label}</p>
                   <p className="text-3xl font-bold mt-1">{c.value}</p>
                   {activeFilter === c.key && (
-                    <p className="text-xs mt-1 font-medium opacity-60">▼ กำลังแสดง</p>
+                    <p className="text-xs mt-1 font-medium opacity-60">{t('reports.showing')}</p>
                   )}
                 </button>
               ))}
@@ -129,45 +142,42 @@ function SummaryTab() {
 
             {summary.avg_completion_hours != null && (
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-sm text-gray-500">เวลาเฉลี่ยในการซ่อม (แจ้ง → ซ่อมเสร็จ)</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{summary.avg_completion_hours} ชั่วโมง</p>
+                <p className="text-sm text-gray-500">{t('reports.avgRepairTime')}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{summary.avg_completion_hours} {t('reports.hours')}</p>
               </div>
             )}
           </>
         )}
 
-        {/* Job List */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <h2 className="font-semibold text-gray-900">
-              {SUMMARY_FILTERS[activeFilter]?.label || 'ทั้งหมด'}
+              {SUMMARY_FILTERS[activeFilter]?.label || t('reports.stats.all')}
             </h2>
-            <span className="text-sm text-gray-400">({filteredList.length} รายการ)</span>
+            <span className="text-sm text-gray-400">({filteredList.length} {t('reports.items')})</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['เลขที่','วันที่แจ้ง','พื้นที่','ผู้แจ้ง','ประเภทงาน','สถานะ','ด่วน'].map(h => (
+                  {colHeaders.map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">กำลังโหลด...</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('common.loading')}</td></tr>
                 ) : filteredList.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
                 ) : filteredList.map(job => (
-                  <tr key={job.id}
-                    className="hover:bg-blue-50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedJobId(job.id)}>
+                  <tr key={job.id} className="hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => setSelectedJobId(job.id)}>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">{job.request_number}</td>
                     <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
-                      {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: th }) : '-'}
+                      {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      {job.main_area?.name || 'อื่นๆ'}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
+                      {job.main_area?.name || t('common.other')}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
                     </td>
                     <td className="px-4 py-3 text-xs">{job.reporter?.full_name}<br/><span className="text-gray-400">{job.reporter?.department}</span></td>
                     <td className="px-4 py-3 text-xs">{job.issue_type?.name || job.other_issue || '-'}</td>
@@ -181,7 +191,6 @@ function SummaryTab() {
         </div>
       </div>
 
-      {/* Job Detail Drawer */}
       {selectedJobId && (
         <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
       )}
@@ -191,6 +200,8 @@ function SummaryTab() {
 
 // ── Tab 2: Technician Report ──────────────────────────
 function TechnicianTab() {
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
@@ -205,25 +216,18 @@ function TechnicianTab() {
     const params = {}
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
-    try {
-      const result = await api.getTechnicianReport(params)
-      setData(result)
-    } finally { setLoading(false) }
+    try { setData(await api.getTechnicianReport(params)) }
+    finally { setLoading(false) }
   }
 
-  function clear() {
-    const d = getDefaultDates()
-    setDateFrom(d.from); setDateTo(d.to)
-  }
+  function clear() { const d = getDefaultDates(); setDateFrom(d.from); setDateTo(d.to) }
+  function toggleExpand(id) { setExpanded(e => ({ ...e, [id]: !e[id] })) }
 
-  function toggleExpand(id) {
-    setExpanded(e => ({ ...e, [id]: !e[id] }))
-  }
-
-  const STATUS_TH = {
-    pending: 'รอรับงาน', assigned: 'จ่ายงานแล้ว', in_progress: 'กำลังดำเนินการ',
-    pending_inspection: 'รอตรวจ', completed: 'เสร็จสิ้น', reopened: 'ส่งซ่อมใหม่', cancelled: 'ยกเลิก'
-  }
+  const detailHeaders = [
+    t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.area'),
+    t('reports.col.job'), t('reports.col.acceptedAt'), t('reports.col.completedAt'),
+    t('reports.col.status'), t('reports.col.urgent'),
+  ]
 
   return (
     <div className="space-y-4">
@@ -232,36 +236,33 @@ function TechnicianTab() {
         onSearch={loadData} onClear={clear} />
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">กำลังโหลด...</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">{t('common.loading')}</div>
       ) : data.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">ไม่พบข้อมูลช่าง</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">{t('reports.noDataTech')}</div>
       ) : (
         <>
-          {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-blue-50 rounded-xl p-4">
-              <p className="text-xs text-blue-600 font-medium">ช่างทั้งหมด</p>
-              <p className="text-3xl font-bold text-blue-700 mt-1">{data.length} คน</p>
+              <p className="text-xs text-blue-600 font-medium">{t('reports.tech.totalTechs')}</p>
+              <p className="text-3xl font-bold text-blue-700 mt-1">{data.length} {t('reports.tech.unit')}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-600 font-medium">งานทั้งหมด</p>
+              <p className="text-xs text-gray-600 font-medium">{t('reports.tech.totalJobs')}</p>
               <p className="text-3xl font-bold text-gray-700 mt-1">{data.reduce((s, t) => s + t.total, 0)}</p>
             </div>
             <div className="bg-green-50 rounded-xl p-4">
-              <p className="text-xs text-green-600 font-medium">งานเสร็จทั้งหมด</p>
+              <p className="text-xs text-green-600 font-medium">{t('reports.tech.completedJobs')}</p>
               <p className="text-3xl font-bold text-green-700 mt-1">{data.reduce((s, t) => s + t.completed, 0)}</p>
             </div>
             <div className="bg-yellow-50 rounded-xl p-4">
-              <p className="text-xs text-yellow-600 font-medium">งานค้างอยู่</p>
+              <p className="text-xs text-yellow-600 font-medium">{t('reports.tech.pendingJobs')}</p>
               <p className="text-3xl font-bold text-yellow-700 mt-1">{data.reduce((s, t) => s + t.pending, 0)}</p>
             </div>
           </div>
 
-          {/* Per-technician rows */}
           <div className="space-y-3">
             {data.map(tech => (
               <div key={tech.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {/* Header row */}
                 <button onClick={() => toggleExpand(tech.id)}
                   className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left">
                   <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -274,31 +275,30 @@ function TechnicianTab() {
                   <div className="flex items-center gap-6 text-sm">
                     <div className="text-center">
                       <p className="font-bold text-gray-900">{tech.total}</p>
-                      <p className="text-xs text-gray-400">รับงาน</p>
+                      <p className="text-xs text-gray-400">{t('reports.tech.assigned')}</p>
                     </div>
                     <div className="text-center">
                       <p className="font-bold text-green-600">{tech.completed}</p>
-                      <p className="text-xs text-gray-400">เสร็จ</p>
+                      <p className="text-xs text-gray-400">{t('reports.tech.completed')}</p>
                     </div>
                     <div className="text-center">
                       <p className="font-bold text-yellow-600">{tech.pending}</p>
-                      <p className="text-xs text-gray-400">ค้าง</p>
+                      <p className="text-xs text-gray-400">{t('reports.tech.pending')}</p>
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-blue-600">{tech.avg_hours != null ? `${tech.avg_hours} ชม.` : '-'}</p>
-                      <p className="text-xs text-gray-400">เฉลี่ย</p>
+                      <p className="font-bold text-blue-600">{tech.avg_hours != null ? `${tech.avg_hours} ${t('reports.hrUnit')}` : '-'}</p>
+                      <p className="text-xs text-gray-400">{t('reports.tech.avg')}</p>
                     </div>
                     {expanded[tech.id] ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                   </div>
                 </button>
 
-                {/* Detail rows */}
                 {expanded[tech.id] && tech.jobs.length > 0 && (
                   <div className="border-t border-gray-100 overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50">
                         <tr>
-                          {['เลขที่','วันที่แจ้ง','พื้นที่','งาน','รับงานเมื่อ','เสร็จเมื่อ','สถานะ','ด่วน'].map(h => (
+                          {detailHeaders.map(h => (
                             <th key={h} className="text-left px-4 py-2 text-gray-500 font-medium whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -308,15 +308,15 @@ function TechnicianTab() {
                           <tr key={i} className="hover:bg-gray-50">
                             <td className="px-4 py-2 font-mono text-gray-400 whitespace-nowrap">{job.request_number}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                              {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy', { locale: th }) : '-'}
+                              {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy', { locale: dateLocale }) : '-'}
                             </td>
                             <td className="px-4 py-2 text-gray-700">{job.location || '-'}</td>
                             <td className="px-4 py-2 text-gray-700 max-w-xs truncate">{job.issue} — {job.description}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                              {job.assigned_at ? format(new Date(job.assigned_at), 'd MMM yy HH:mm', { locale: th }) : '-'}
+                              {job.assigned_at ? format(new Date(job.assigned_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-gray-600">
-                              {job.completed_at ? format(new Date(job.completed_at), 'd MMM yy HH:mm', { locale: th }) : '-'}
+                              {job.completed_at ? format(new Date(job.completed_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
                             </td>
                             <td className="px-4 py-2"><StatusBadge status={job.status} /></td>
                             <td className="px-4 py-2 text-center">{job.is_urgent ? <span className="text-red-500 font-bold">!</span> : '-'}</td>
@@ -327,7 +327,7 @@ function TechnicianTab() {
                   </div>
                 )}
                 {expanded[tech.id] && tech.jobs.length === 0 && (
-                  <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-400">ไม่มีงานในช่วงเวลานี้</div>
+                  <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-400">{t('reports.tech.noJobsInPeriod')}</div>
                 )}
               </div>
             ))}
@@ -340,6 +340,8 @@ function TechnicianTab() {
 
 // ── Tab 3: Area Report ────────────────────────────────
 function AreaTab() {
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
@@ -350,10 +352,7 @@ function AreaTab() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    api.getAreas().then(setAreas)
-    loadData()
-  }, [])
+  useEffect(() => { api.getAreas().then(setAreas); loadData() }, [])
 
   async function loadData() {
     setLoading(true)
@@ -363,10 +362,8 @@ function AreaTab() {
     if (selectedMain) params.main_area_id = selectedMain
     if (selectedSub) params.sub_area_id = selectedSub
     if (filterStatus) params.status = filterStatus
-    try {
-      const result = await api.getAreaReport(params)
-      setData(result)
-    } finally { setLoading(false) }
+    try { setData(await api.getAreaReport(params)) }
+    finally { setLoading(false) }
   }
 
   function clear() {
@@ -378,58 +375,67 @@ function AreaTab() {
   const selectedMainArea = areas.find(a => a.id === Number(selectedMain))
   const subAreas = selectedMainArea?.sub_areas?.filter(s => s.is_active) || []
 
+  const areaSummaryHeaders = [
+    t('reports.col.mainArea'), t('reports.col.subArea'), t('reports.col.total'),
+    t('reports.col.completed'), t('reports.col.pending'), t('reports.col.urgent'),
+  ]
+  const areaRequestHeaders = [
+    t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.area'),
+    t('reports.col.issueType'), t('reports.col.reporter'), t('reports.col.technician'),
+    t('reports.col.status'), t('reports.col.urgent'),
+  ]
+
   return (
     <div className="space-y-4">
       <DateFilter dateFrom={dateFrom} dateTo={dateTo}
         onFromChange={setDateFrom} onToChange={setDateTo}
         onSearch={loadData} onClear={clear}>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">พื้นที่หลัก</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('reports.area.filterMainArea')}</label>
           <select value={selectedMain}
             onChange={e => { setSelectedMain(e.target.value); setSelectedSub('') }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">ทั้งหมด</option>
+            <option value="">{t('common.all')}</option>
             {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         {selectedMain && subAreas.length > 0 && (
           <div>
-            <label className="block text-xs text-gray-500 mb-1">พื้นที่ย่อย</label>
+            <label className="block text-xs text-gray-500 mb-1">{t('reports.area.filterSubArea')}</label>
             <select value={selectedSub} onChange={e => setSelectedSub(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">ทั้งหมด</option>
+              <option value="">{t('common.all')}</option>
               {subAreas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         )}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">สถานะ</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('reports.area.filterStatus')}</label>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">ทั้งหมด</option>
+            <option value="">{t('common.all')}</option>
             {['pending','assigned','in_progress','pending_inspection','completed','reopened','cancelled'].map(s => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{t(`status.${s}`)}</option>
             ))}
           </select>
         </div>
       </DateFilter>
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">กำลังโหลด...</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">{t('common.loading')}</div>
       ) : !data ? null : (
         <>
-          {/* Area summary table */}
           {data.summary?.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-blue-600" />
-                <h3 className="font-semibold text-gray-900">สรุปตามพื้นที่ ({data.summary.length} พื้นที่)</h3>
+                <h3 className="font-semibold text-gray-900">{t('reports.area.summary')} ({data.summary.length} {t('reports.area.areas')})</h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      {['พื้นที่หลัก','พื้นที่ย่อย','ทั้งหมด','เสร็จสิ้น','ค้างอยู่','งานด่วน'].map(h => (
+                      {areaSummaryHeaders.map(h => (
                         <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -451,28 +457,27 @@ function AreaTab() {
             </div>
           )}
 
-          {/* Request list */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900">รายการงานซ่อม ({data.requests?.length || 0} รายการ)</h3>
+              <h3 className="font-semibold text-gray-900">{t('reports.area.requests')} ({data.requests?.length || 0} {t('reports.items')})</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    {['เลขที่','วันที่แจ้ง','พื้นที่','ประเภทงาน','ผู้แจ้ง','ช่าง','สถานะ','ด่วน'].map(h => (
+                    {areaRequestHeaders.map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {data.requests?.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
                   ) : data.requests?.map((job, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{job.request_number}</td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap text-gray-600">
-                        {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: th }) : '-'}
+                        {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         <span className="font-medium">{job.main_area}</span>
@@ -497,6 +502,7 @@ function AreaTab() {
 
 // ── Tab 4: Top Assets ─────────────────────────────────
 function TopAssetsTab() {
+  const { t } = useLang()
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
@@ -525,11 +531,11 @@ function TopAssetsTab() {
         onSearch={loadData} onClear={clear} />
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 mb-4">Top 5 อุปกรณ์/ประเภทงานที่เสียบ่อยที่สุด</h3>
+        <h3 className="font-semibold text-gray-900 mb-4">{t('reports.topAssets.title')}</h3>
         {loading ? (
-          <div className="text-center text-gray-400 py-8 text-sm">กำลังโหลด...</div>
+          <div className="text-center text-gray-400 py-8 text-sm">{t('common.loading')}</div>
         ) : data.length === 0 ? (
-          <div className="text-center text-gray-400 py-8 text-sm">ไม่พบข้อมูล</div>
+          <div className="text-center text-gray-400 py-8 text-sm">{t('reports.noFound')}</div>
         ) : (
           <div className="space-y-4">
             {data.map((item, i) => (
@@ -546,17 +552,16 @@ function TopAssetsTab() {
                   </div>
                   <div className="text-right">
                     <span className="text-lg font-bold text-gray-900">{item.total}</span>
-                    <span className="text-xs text-gray-400 ml-1">ครั้ง</span>
+                    <span className="text-xs text-gray-400 ml-1">{t('reports.topAssets.times')}</span>
                   </div>
                 </div>
-                {/* Progress bar */}
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-blue-500 transition-all"
                     style={{ width: `${(item.total / maxTotal) * 100}%` }} />
                 </div>
                 <div className="flex justify-between text-xs text-gray-400">
-                  <span>เสร็จแล้ว {item.completed} ครั้ง</span>
-                  <span>ค้างอยู่ {item.pending} ครั้ง</span>
+                  <span>{t('reports.topAssets.completedTimes')} {item.completed} {t('reports.topAssets.times')}</span>
+                  <span>{t('reports.topAssets.pendingTimes')} {item.pending} {t('reports.topAssets.times')}</span>
                 </div>
               </div>
             ))}
@@ -569,6 +574,7 @@ function TopAssetsTab() {
 
 // ── Tab 5: Staff KPI ──────────────────────────────────
 function StaffKpiTab() {
+  const { t } = useLang()
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
@@ -588,6 +594,14 @@ function StaffKpiTab() {
 
   function clear() { const d = getDefaultDates(); setDateFrom(d.from); setDateTo(d.to) }
 
+  const kpiHeaders = [
+    t('reports.staffKpi.techName'), t('reports.staffKpi.positionDept'),
+    t('reports.staffKpi.assigned'), t('reports.staffKpi.completed'),
+    t('reports.staffKpi.pending'), t('reports.staffKpi.external'),
+    t('reports.staffKpi.reopen'), t('reports.staffKpi.responseTime'),
+    t('reports.staffKpi.repairTime'), t('reports.staffKpi.totalCost'),
+  ]
+
   return (
     <div className="space-y-4">
       <DateFilter dateFrom={dateFrom} dateTo={dateTo}
@@ -597,19 +611,18 @@ function StaffKpiTab() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900">Staff Performance KPI</h3>
-          <p className="text-xs text-gray-400 mt-0.5">เรียงตามจำนวนงานที่เสร็จ (มากสุดก่อน)</p>
+          <p className="text-xs text-gray-400 mt-0.5">{t('reports.staffKpi.subtitle')}</p>
         </div>
         {loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm">กำลังโหลด...</div>
+          <div className="p-8 text-center text-gray-400 text-sm">{t('common.loading')}</div>
         ) : data.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">ไม่พบข้อมูลช่าง</div>
+          <div className="p-8 text-center text-gray-400 text-sm">{t('reports.noDataTech')}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['ชื่อช่าง','ตำแหน่ง/แผนก','รับงาน','เสร็จ','ค้าง','ช่างนอก',
-                    'ถูกตีกลับ','เวลาตอบรับ (นาที)','เวลาซ่อมเฉลี่ย (ชม.)','ต้นทุนรวม (บาท)'].map(h => (
+                  {kpiHeaders.map(h => (
                     <th key={h} className="text-left px-3 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -630,9 +643,7 @@ function StaffKpiTab() {
                     </td>
                     <td className="px-3 py-3 text-center">
                       {tech.avg_response_minutes != null
-                        ? <span className={`font-medium ${tech.avg_response_minutes > 30 ? 'text-red-500' : 'text-green-600'}`}>
-                            {tech.avg_response_minutes}
-                          </span>
+                        ? <span className={`font-medium ${tech.avg_response_minutes > 30 ? 'text-red-500' : 'text-green-600'}`}>{tech.avg_response_minutes}</span>
                         : <span className="text-gray-300">-</span>}
                     </td>
                     <td className="px-3 py-3 text-center">
@@ -654,29 +665,248 @@ function StaffKpiTab() {
   )
 }
 
+// ── Tab 6: Consumables ────────────────────────────────
+function ConsumablesTab() {
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
+
+  function todayStr() {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  }
+
+  const [dateFrom, setDateFrom] = useState(todayStr())
+  const [dateTo, setDateTo] = useState(todayStr())
+  const [areas, setAreas] = useState([])
+  const [subAreaId, setSubAreaId] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState({})
+
+  // flatten all sub areas from all main areas
+  const allSubAreas = areas.flatMap(a => (a.sub_areas || []).filter(s => s.is_active))
+
+  useEffect(() => {
+    api.getAreas().then(setAreas)
+    loadData()
+  }, [])
+
+  async function loadData() {
+    setLoading(true)
+    const params = {}
+    if (dateFrom) params.date_from = dateFrom
+    if (dateTo) params.date_to = dateTo
+    if (subAreaId) params.sub_area_id = subAreaId
+    try { setData(await api.getMaterialsReport(params)) }
+    finally { setLoading(false) }
+  }
+
+  function clear() {
+    const td = todayStr()
+    setDateFrom(td); setDateTo(td); setSubAreaId('')
+  }
+
+  function toggleExpand(key) {
+    setExpanded(e => ({ ...e, [key]: !e[key] }))
+  }
+
+  function exportExcel() {
+    if (!data?.items?.length) return
+    const rows = []
+    for (const item of data.items) {
+      for (const u of item.usages) {
+        rows.push({
+          [t('reports.materials.materialName')]: item.name,
+          [t('reports.materials.unit')]: item.unit,
+          [t('reports.materials.qty')]: u.qty,
+          [t('reports.materials.mainArea')]: u.main_area,
+          [t('reports.materials.subArea')]: u.sub_area,
+          [t('reports.materials.requestNo')]: u.request_number,
+          [t('reports.materials.recordedBy')]: u.recorded_by,
+          [t('reports.materials.usageDate')]: format(new Date(u.date), 'dd/MM/yyyy HH:mm', { locale: dateLocale }),
+        })
+      }
+    }
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, lang === 'th' ? 'วัสดุสิ้นเปลือง' : 'Consumables')
+    XLSX.writeFile(wb, `consumables_${dateFrom}_${dateTo}.xlsx`)
+  }
+
+  const items = data?.items || []
+
+  return (
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t('reports.dateFrom')}</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t('reports.dateTo')}</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t('reports.materials.filterSubArea')}</label>
+            <select value={subAreaId} onChange={e => setSubAreaId(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">{t('reports.materials.allSubAreas')}</option>
+              {allSubAreas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <button onClick={loadData}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            {t('reports.search')}
+          </button>
+          <button onClick={clear}
+            className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+            {t('reports.clear')}
+          </button>
+          {items.length > 0 && (
+            <button onClick={exportExcel}
+              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium ml-auto">
+              <Download className="w-4 h-4" />
+              {t('reports.materials.exportExcel')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {!loading && data && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-blue-50 rounded-xl p-4">
+            <p className="text-xs text-blue-600 font-medium">{t('reports.materials.materials')}</p>
+            <p className="text-3xl font-bold text-blue-700 mt-1">{items.length}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-4">
+            <p className="text-xs text-gray-600 font-medium">{t('reports.materials.entries')}</p>
+            <p className="text-3xl font-bold text-gray-700 mt-1">{data.total_entries}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Materials table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Package className="w-4 h-4 text-blue-600" />
+          <h3 className="font-semibold text-gray-900">{t('reports.materials.title')}</h3>
+          {!loading && <span className="text-sm text-gray-400">({items.length} {t('reports.materials.materials')})</span>}
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-gray-400 text-sm">{t('common.loading')}</div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-sm">{t('reports.materials.noData')}</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {items.map((item) => {
+              const key = `${item.name}||${item.unit}`
+              const isOpen = !!expanded[key]
+              return (
+                <div key={key}>
+                  {/* Material row — clickable to expand */}
+                  <button
+                    onClick={() => toggleExpand(key)}
+                    className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-900">{item.name}</span>
+                      <span className="ml-2 text-xs text-gray-400">{item.unit}</span>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm flex-shrink-0">
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900">{item.total_qty.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{item.unit}</p>
+                      </div>
+                      <span className="text-xs text-blue-500 font-medium w-16 text-right">
+                        {item.usages.length} {t('reports.materials.entries')}
+                      </span>
+                      {isOpen
+                        ? <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        : <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded usage detail */}
+                  {isOpen && (
+                    <div className="bg-blue-50 border-t border-blue-100">
+                      <div className="px-5 py-2 text-xs font-medium text-blue-700 bg-blue-100">
+                        {t('reports.materials.usageDetail')} — {item.name}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-blue-50">
+                              {[
+                                t('reports.materials.usageDate'),
+                                t('reports.materials.qty'),
+                                t('reports.materials.mainArea'),
+                                t('reports.materials.subArea'),
+                                t('reports.materials.requestNo'),
+                                t('reports.materials.recordedBy'),
+                              ].map(h => (
+                                <th key={h} className="text-left px-4 py-2 text-blue-600 font-medium whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-blue-100">
+                            {item.usages.map((u, i) => (
+                              <tr key={i} className="hover:bg-white transition-colors">
+                                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">
+                                  {format(new Date(u.date), 'd MMM yy HH:mm', { locale: dateLocale })}
+                                </td>
+                                <td className="px-4 py-2 font-medium text-gray-900">{u.qty.toLocaleString()} {item.unit}</td>
+                                <td className="px-4 py-2 text-gray-700">{u.main_area}</td>
+                                <td className="px-4 py-2 text-gray-600">{u.sub_area}</td>
+                                <td className="px-4 py-2 font-mono text-gray-400 whitespace-nowrap">{u.request_number}</td>
+                                <td className="px-4 py-2 text-gray-700 whitespace-nowrap">{u.recorded_by}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────
 export default function ReportsPage() {
+  const { t } = useLang()
   const [tab, setTab] = useState('summary')
+
   const tabs = [
-    { key: 'summary', label: 'ภาพรวม', icon: BarChart2 },
-    { key: 'technician', label: 'การทำงานช่าง', icon: User },
-    { key: 'area', label: 'ประวัติตามพื้นที่', icon: MapPin },
-    { key: 'top_assets', label: 'Top 5 เสียบ่อย', icon: Wrench },
-    { key: 'staff_kpi', label: 'KPI ช่าง', icon: Trophy },
+    { key: 'summary', label: t('reports.tabs.summary'), icon: BarChart2 },
+    { key: 'technician', label: t('reports.tabs.technician'), icon: User },
+    { key: 'area', label: t('reports.tabs.area'), icon: MapPin },
+    { key: 'top_assets', label: t('reports.tabs.topAssets'), icon: Wrench },
+    { key: 'staff_kpi', label: t('reports.tabs.staffKpi'), icon: Trophy },
+    { key: 'materials', label: t('reports.tabs.materials'), icon: Package },
   ]
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
-      <h1 className="text-xl font-bold text-gray-900">รายงานการซ่อม</h1>
+      <h1 className="text-xl font-bold text-gray-900">{t('reports.repairReport')}</h1>
 
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+        {tabs.map(tb => (
+          <button key={tb.key} onClick={() => setTab(tb.key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
-              tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              tab === tb.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            <t.icon className="w-4 h-4" />
-            {t.label}
+            <tb.icon className="w-4 h-4" />
+            {tb.label}
           </button>
         ))}
       </div>
@@ -686,6 +916,7 @@ export default function ReportsPage() {
       {tab === 'area' && <AreaTab />}
       {tab === 'top_assets' && <TopAssetsTab />}
       {tab === 'staff_kpi' && <StaffKpiTab />}
+      {tab === 'materials' && <ConsumablesTab />}
     </div>
   )
 }

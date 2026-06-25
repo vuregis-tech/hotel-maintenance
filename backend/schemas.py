@@ -9,10 +9,20 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class ReorderRequest(BaseModel):
+    ids: List[int]
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
     user: "UserOut"
+    must_change_password: bool = False
 
 
 # ── User ──────────────────────────────────────────────
@@ -42,6 +52,7 @@ class UserOut(BaseModel):
     position: str
     role: str
     is_active: bool
+    must_change_password: bool = False
     created_at: datetime
 
     class Config:
@@ -53,6 +64,7 @@ class SubAreaOut(BaseModel):
     id: int
     name: str
     is_active: bool
+    sort_order: int = 0
 
     class Config:
         from_attributes = True
@@ -62,6 +74,7 @@ class MainAreaOut(BaseModel):
     id: int
     name: str
     is_active: bool
+    sort_order: int = 0
     sub_areas: List[SubAreaOut] = []
 
     class Config:
@@ -82,6 +95,7 @@ class IssueTypeOut(BaseModel):
     id: int
     name: str
     is_active: bool
+    sort_order: int = 0
 
     class Config:
         from_attributes = True
@@ -107,7 +121,6 @@ class MaterialItem(BaseModel):
     name: str
     qty: float = 1
     unit: str = "ชิ้น"
-    unit_cost: float = 0.0
 
 
 # ── Co-Assignment ─────────────────────────────────────
@@ -163,7 +176,7 @@ class TransferBody(BaseModel):
 
 class RepairLogOut(BaseModel):
     id: int
-    repair_details: str
+    repair_details: Optional[str] = None
     materials_used: Optional[str] = None
     total_cost: Optional[float] = None
     is_complete: bool = False
@@ -345,6 +358,7 @@ class ReportSummary(BaseModel):
     reopened: int
     cancelled: int
     external_tech: int
+    ooo_count: int
     urgent_count: int
     avg_completion_hours: Optional[float]
 

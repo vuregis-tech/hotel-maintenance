@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models import IssueType, User
-from ..schemas import IssueTypeOut, IssueTypeCreate
+from ..schemas import IssueTypeOut, IssueTypeCreate, ReorderRequest
 from ..auth import get_current_user, require_roles
 
 router = APIRouter(prefix="/api/issue-types", tags=["issue_types"])
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/issue-types", tags=["issue_types"])
 
 @router.get("", response_model=List[IssueTypeOut])
 def list_issue_types(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(IssueType).filter(IssueType.is_active == True).order_by(IssueType.name).all()
+    return db.query(IssueType).filter(IssueType.is_active == True).order_by(IssueType.sort_order, IssueType.name).all()
 
 
 @router.post("", response_model=IssueTypeOut)
@@ -21,6 +21,14 @@ def create_issue_type(data: IssueTypeCreate, db: Session = Depends(get_db), curr
     db.commit()
     db.refresh(it)
     return it
+
+
+@router.put("/reorder")
+def reorder_issue_types(data: ReorderRequest, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
+    for i, type_id in enumerate(data.ids):
+        db.query(IssueType).filter(IssueType.id == type_id).update({"sort_order": i})
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/{type_id}", response_model=IssueTypeOut)
