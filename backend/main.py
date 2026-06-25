@@ -286,19 +286,20 @@ def reseed_config(current_user: User = Depends(require_roles("admin"))):
     db = SessionLocal()
     try:
         is_pg = "postgresql" in settings.DATABASE_URL or settings.DATABASE_URL.startswith("postgres://")
-        # ลบ users ที่ไม่ใช่ admin ก่อน
-        db.query(User).filter(User.username != "admin").delete()
-        # ลบ sub_areas, main_areas, issue_types, departments
+        # ลบข้อมูลทั้งหมดด้วย CASCADE (จัดการ FK อัตโนมัติ)
         if is_pg:
-            db.execute(text("TRUNCATE TABLE sub_areas RESTART IDENTITY CASCADE"))
+            db.execute(text("TRUNCATE TABLE maintenance_requests RESTART IDENTITY CASCADE"))
             db.execute(text("TRUNCATE TABLE main_areas RESTART IDENTITY CASCADE"))
             db.execute(text("TRUNCATE TABLE issue_types RESTART IDENTITY CASCADE"))
             db.execute(text("TRUNCATE TABLE departments RESTART IDENTITY CASCADE"))
+            db.execute(text("DELETE FROM users WHERE username != 'admin'"))
         else:
+            db.execute(text("DELETE FROM maintenance_requests"))
             db.execute(text("DELETE FROM sub_areas"))
             db.execute(text("DELETE FROM main_areas"))
             db.execute(text("DELETE FROM issue_types"))
             db.execute(text("DELETE FROM departments"))
+            db.execute(text("DELETE FROM users WHERE username != 'admin'"))
         db.commit()
 
         # Re-seed ข้อมูลใหม่

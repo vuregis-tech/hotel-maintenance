@@ -597,11 +597,10 @@ function ReseedConfigBanner() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="font-bold text-gray-900 mb-2">ยืนยัน Import Config?</h3>
             <div className="text-sm text-gray-600 space-y-1 mb-4">
-              <p className="text-red-600 font-medium">⚠️ การดำเนินการนี้จะ:</p>
-              <p>• ลบ Users ทั้งหมด (ยกเว้น admin)</p>
-              <p>• ลบ Main Areas และ Sub Areas ทั้งหมด</p>
-              <p>• ลบ Issue Types ทั้งหมด</p>
-              <p>• ลบ Departments ทั้งหมด</p>
+              <p className="text-red-600 font-medium">⚠️ การดำเนินการนี้จะลบ:</p>
+              <p>• งานแจ้งซ่อมทั้งหมด (Maintenance Requests)</p>
+              <p>• Users ทั้งหมด (ยกเว้น admin)</p>
+              <p>• Main Areas, Sub Areas, Issue Types, Departments</p>
               <p className="text-blue-700 font-medium mt-2">แล้ว Import ข้อมูลใหม่จาก config ทันที</p>
             </div>
             <div className="flex gap-2">
