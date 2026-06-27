@@ -6,7 +6,7 @@ const DICT = { th, en }
 const LangContext = createContext()
 
 export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(() => localStorage.getItem('lang') || 'th')
+  const [lang, setLangState] = useState(() => localStorage.getItem('lang') || 'en')
 
   function setLang(l) {
     setLangState(l)

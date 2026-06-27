@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LangContext'
@@ -6,7 +6,7 @@ import { api } from '../../lib/api'
 import toast from 'react-hot-toast'
 import {
   Wrench, LayoutDashboard, PlusCircle, ClipboardList,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck, Languages, KeyRound
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Bell, CalendarCheck, KeyRound
 } from 'lucide-react'
 
 function NavItem({ to, icon: Icon, label, onClick }) {
@@ -35,7 +35,15 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 
 export default function Layout({ children }) {
   const { user, signOut, mustChangePassword, clearMustChangePassword } = useAuth()
-  const { lang, setLang, t } = useLang()
+  const { t } = useLang()
+  const [logoUrl, setLogoUrl] = useState(null)
+
+  useEffect(() => {
+    api.getLogo().then(d => setLogoUrl(d.url)).catch(() => {})
+    const handler = (e) => setLogoUrl(e.detail.url)
+    window.addEventListener('logo-updated', handler)
+    return () => window.removeEventListener('logo-updated', handler)
+  }, [])
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showChangePw, setShowChangePw] = useState(false)
@@ -77,12 +85,18 @@ export default function Layout({ children }) {
   const Sidebar = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
+      {logoUrl && (
+        <div className="flex justify-center items-center px-4 pt-4 pb-3 border-b border-gray-100">
+          <img src={logoUrl} alt="logo" className="h-[100px] w-auto object-contain" />
+        </div>
+      )}
+      {/* System name */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
         <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
           <Wrench className="w-5 h-5 text-white" />
         </div>
         <div>
-          <p className="font-bold text-gray-900 text-sm leading-tight">Hotel Maintenance</p>
+          <p className="font-bold text-gray-900 text-sm leading-tight">Work Order</p>
           <p className="text-xs text-gray-400">{t('auth.systemName')}</p>
         </div>
       </div>
@@ -114,23 +128,6 @@ export default function Layout({ children }) {
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(item => <NavItem key={item.to} {...item} label={t(item.labelKey)} />)}
       </nav>
-
-      {/* Language switcher */}
-      <div className="px-4 py-3 border-t border-gray-100">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <Languages className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          <div className="flex gap-1 flex-1">
-            {['th', 'en'].map(l => (
-              <button key={l} onClick={() => setLang(l)}
-                className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
-                  lang === l ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
-                }`}>
-                {l === 'th' ? 'ไทย' : 'EN'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
       {/* Logout */}
       <div className="px-3 pb-4 border-t border-gray-100">
@@ -180,7 +177,15 @@ export default function Layout({ children }) {
             </div>
             <span className="font-semibold text-gray-900 text-sm">{t('auth.systemName')}</span>
           </div>
+          {logoUrl && (
+            <img src={logoUrl} alt="logo" className="ml-auto h-[50px] w-auto object-contain" />
+          )}
         </header>
+
+        {/* Dev banner */}
+        <div className="bg-amber-400 text-amber-900 text-center text-xs font-bold py-1 tracking-widest shrink-0">
+          ⚠ User Testing Version ⚠
+        </div>
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">

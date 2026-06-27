@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useLang } from '../context/LangContext'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database, ImagePlus, Trash } from 'lucide-react'
 
 // ─── Mini reusable inline edit row ───────────────────
 function EditableItem({ name, onSave, onDelete, onMoveUp, onMoveDown, children }) {
@@ -84,6 +84,14 @@ function DepartmentsTab() {
     } catch (err) { toast.error(err.message) }
   }
 
+  async function toggleReceive(id, checked) {
+    try {
+      await api.updateDepartment(id, { can_receive_jobs: checked })
+      setDepts(d => d.map(x => x.id === id ? { ...x, can_receive_jobs: checked } : x))
+      toast.success(t('admin.department.editSuccess'))
+    } catch (err) { toast.error(err.message) }
+  }
+
   return (
     <div>
       <h2 className="font-semibold text-gray-900 mb-4">{t('admin.department.title')}</h2>
@@ -101,6 +109,12 @@ function DepartmentsTab() {
         {depts.map(d => (
           <div key={d.id} className="px-4">
             <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)}>
+              <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs text-gray-500">
+                <input type="checkbox" checked={!!d.can_receive_jobs}
+                  onChange={e => toggleReceive(d.id, e.target.checked)}
+                  className="w-3.5 h-3.5 text-green-600 rounded" />
+                {t('admin.department.canReceiveJobs')}
+              </label>
               <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs text-gray-500">
                 <input type="checkbox" checked={!!d.show_in_ooo}
                   onChange={e => toggleOOO(d.id, e.target.checked)}
@@ -122,8 +136,10 @@ function UsersTab() {
   const [depts, setDepts] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editUser, setEditUser] = useState(null)
-  const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' })
+  const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff', telegram_username: '' })
   const [saving, setSaving] = useState(false)
+  const [sortCol, setSortCol] = useState('full_name')
+  const [sortDir, setSortDir] = useState('asc')
 
   const ROLE_OPTIONS = [
     { value: 'admin', label: t('admin.user.roles.admin') },
@@ -146,15 +162,26 @@ function UsersTab() {
     api.getDepartments().then(setDepts).catch(() => {})
   }, [])
 
-  function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
-  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active }); setEditUser(u); setShowForm(true) }
+  function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff', telegram_username: '' }); setEditUser(null); setShowForm(true) }
+  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active, telegram_username: u.telegram_username || '' }); setEditUser(u); setShowForm(true) }
+
+  function handleSort(col) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const av = (a[sortCol] ?? '').toString().toLowerCase()
+    const bv = (b[sortCol] ?? '').toString().toLowerCase()
+    return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+  })
 
   async function handleSave() {
     if (!form.full_name || !form.username || (!editUser && !form.password)) return toast.error(t('common.required'))
     setSaving(true)
     try {
       if (editUser) {
-        const updated = await api.updateUser(editUser.id, { full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) })
+        const updated = await api.updateUser(editUser.id, { username: form.username, full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, telegram_username: form.telegram_username || null, ...(form.password ? { password: form.password } : {}) })
         setUsers(u => u.map(x => x.id === editUser.id ? updated : x))
       } else {
         const created = await api.createUser(form)
@@ -173,10 +200,11 @@ function UsersTab() {
   }
 
   const formFields = [
-    ['full_name', t('admin.user.fullName'), 'text'],
-    ['username', t('admin.user.username'), 'text'],
-    ['password', editUser ? t('admin.user.passwordChangeHint') : t('admin.user.password'), 'password'],
-    ['position', t('admin.user.position'), 'text'],
+    ['full_name', t('admin.user.fullName'), 'text', ''],
+    ['username', t('admin.user.username'), 'text', ''],
+    ['password', editUser ? t('admin.user.passwordChangeHint') : t('admin.user.password'), 'password', ''],
+    ['position', t('admin.user.position'), 'text', ''],
+    ['telegram_username', t('admin.user.telegramUsername'), 'text', 'username (ไม่ต้องใส่ @)'],
   ]
 
   return (
@@ -193,20 +221,28 @@ function UsersTab() {
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               {[
-                t('admin.user.tableHeaders.name'),
-                t('admin.user.tableHeaders.username'),
-                t('admin.user.tableHeaders.position'),
-                t('admin.user.tableHeaders.department'),
-                t('admin.user.tableHeaders.role'),
-                t('admin.user.tableHeaders.status'),
-                '',
-              ].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500">{h}</th>
+                ['full_name', t('admin.user.tableHeaders.name')],
+                ['username', t('admin.user.tableHeaders.username')],
+                ['position', t('admin.user.tableHeaders.position')],
+                ['department', t('admin.user.tableHeaders.department')],
+                ['role', t('admin.user.tableHeaders.role')],
+                ['is_active', t('admin.user.tableHeaders.status')],
+              ].map(([col, label]) => (
+                <th key={col} onClick={() => handleSort(col)}
+                  className="text-left px-4 py-3 text-xs font-medium text-gray-500 cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100">
+                  <span className="flex items-center gap-1">
+                    {label}
+                    <span className="text-gray-300">
+                      {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </span>
+                </th>
               ))}
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {users.map(u => (
+            {sortedUsers.map(u => (
               <tr key={u.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-900">{u.full_name}</td>
                 <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
@@ -231,12 +267,11 @@ function UsersTab() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
             <h3 className="font-semibold text-gray-900 mb-4">{editUser ? t('admin.user.editUser') : t('admin.user.newUserTitle')}</h3>
             <div className="space-y-3">
-              {formFields.map(([f, label, type]) => (
+              {formFields.map(([f, label, type, placeholder]) => (
                 <div key={f}>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">{label}</label>
-                  <input type={type} value={form[f]} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
-                    disabled={editUser && f === 'username'}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                  <input type={type} value={form[f] ?? ''} placeholder={placeholder || ''} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
               <div>
@@ -551,6 +586,66 @@ function IssueTypesTab() {
 }
 
 // ─── Main AdminPage ───────────────────────────────────
+function LogoBanner() {
+  const [logoUrl, setLogoUrl] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useState(null)
+
+  useEffect(() => { api.getLogo().then(d => setLogoUrl(d.url)).catch(() => {}) }, [])
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await api.uploadLogo(file)
+      setLogoUrl(res.url)
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: { url: res.url } }))
+      toast.success('อัปโหลด Logo เรียบร้อย')
+    } catch (err) { toast.error(err.message) }
+    finally { setUploading(false); e.target.value = '' }
+  }
+
+  async function handleDelete() {
+    if (!confirm('ลบ Logo ออกใช่ไหม?')) return
+    try {
+      await api.deleteLogo()
+      setLogoUrl(null)
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: { url: null } }))
+      toast.success('ลบ Logo แล้ว')
+    } catch (err) { toast.error(err.message) }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div className="w-20 h-14 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+        {logoUrl
+          ? <img src={logoUrl} alt="logo" className="w-full h-full object-contain p-1" />
+          : <ImagePlus className="w-6 h-6 text-gray-300" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900">Logo</p>
+        <p className="text-xs text-gray-400 mt-0.5">แสดงที่มุมบนขวาของ Sidebar และ Header</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {logoUrl && (
+          <button onClick={handleDelete}
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+            <Trash className="w-4 h-4" />
+          </button>
+        )}
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+          uploading ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 hover:bg-blue-700 text-white'
+        }`}>
+          <ImagePlus className="w-4 h-4" />
+          {uploading ? 'กำลังอัปโหลด...' : logoUrl ? 'เปลี่ยน Logo' : 'อัปโหลด Logo'}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 function ReseedConfigBanner() {
   const { t } = useLang()
   const [confirm, setConfirm] = useState(false)
@@ -657,7 +752,7 @@ export default function AdminPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
-      <ReseedConfigBanner />
+      <LogoBanner />
       <StorageStatusBanner />
 
       <div className="flex gap-1 border-b border-gray-200">

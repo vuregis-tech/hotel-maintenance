@@ -1,12 +1,16 @@
 # Hotel Maintenance System — CLAUDE.md
 
+> **DEV FOLDER** — Branch: `dev` | Local SQLite DB | ใช้สำหรับ development เท่านั้น  
+> Production folder: `/Users/soon/Library/CloudStorage/OneDrive-Personal/Claud/hotel-maintenance` (branch: `main`)
+
 ## Project Overview
 
 A hotel maintenance request system. Staff report issues, technicians receive and complete jobs, supervisors/admins oversee everything. Bilingual (Thai/English).
 
-**Live URL:** https://hotel-maintenance-production-e091.up.railway.app  
-**Deploy:** `railway up --detach` (run from this directory)  
-**Infra:** Railway — project `calm-celebration`, service `hotel-maintenance` + Postgres
+**Production URL:** https://hotel-maintenance-production-e091.up.railway.app  
+**Deploy to Testing:** `railway up --detach` (เชื่อมกับ Railway project testing)  
+**Git workflow:** develop on `dev` branch → merge to `main` → auto-deploy to Production Railway  
+**Infra:** Railway — project `calm-celebration`, service `hotel-maintenance` + Postgres (Production)
 
 ---
 

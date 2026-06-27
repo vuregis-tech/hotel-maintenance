@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
-import { Hotel, Eye, EyeOff, Wrench, Languages } from 'lucide-react'
+import { Hotel, Eye, EyeOff, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { user, signIn, loading } = useAuth()
-  const { lang, setLang, t } = useLang()
+  const { lang, t } = useLang()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -52,21 +52,12 @@ export default function LoginPage() {
             <Wrench className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">{t('login.welcome')}</h1>
-          <p className="text-gray-500 mt-1">Hotel Maintenance System</p>
+          <p className="text-gray-500 mt-1">Work Order System</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h2 className="text-lg font-semibold text-gray-800">{t('login.submit')}</h2>
-            <div className="flex items-center gap-1">
-              <Languages className="w-4 h-4 text-gray-400" />
-              {['th','en'].map(l => (
-                <button key={l} onClick={() => setLang(l)}
-                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${lang === l ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-100'}`}>
-                  {l === 'th' ? 'ไทย' : 'EN'}
-                </button>
-              ))}
-            </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
 
@@ -116,7 +107,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center gap-1.5 mt-6 text-sm text-gray-400">
           <Hotel className="w-4 h-4" />
-          <span>Hotel Maintenance System v2.0</span>
+          <span>Work Order System v2.0</span>
         </div>
       </div>
     </div>

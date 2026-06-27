@@ -7,9 +7,9 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 
 from .database import Base, engine
-from .models import User, MainArea, SubArea, IssueType, RepairLog, Department
+from .models import User, MainArea, SubArea, IssueType, RepairLog, Department, AppSetting
 from .auth import hash_password, require_roles
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, UploadFile, File
 from .database import SessionLocal
 from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
@@ -215,6 +215,10 @@ def run_migrations():
         ("issue_types", "sort_order", "INTEGER DEFAULT 0"),
         # Security: force password change on first login
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Telegram tagging
+        ("users", "telegram_username", "VARCHAR(100)"),
+        # Department: แผนกที่รับงานได้
+        ("departments", "can_receive_jobs", "BOOLEAN DEFAULT FALSE"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:
@@ -413,6 +417,48 @@ async def storage_status():
             "Cloudinary ยังไม่ได้ตั้งค่า — ใช้ local storage (ใช้ได้สำหรับ dev เท่านั้น)"
         ),
     }
+
+@app.get("/api/system/logo")
+def get_logo():
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "logo_url").first()
+        return {"url": row.value if row else None}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_roles("admin")),
+):
+    from .services.storage import upload_image
+    data = await file.read()
+    url = upload_image(data, folder="hotel-maintenance/logos")
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "logo_url").first()
+        if row:
+            row.value = url
+        else:
+            db.add(AppSetting(key="logo_url", value=url))
+        db.commit()
+    finally:
+        db.close()
+    return {"url": url}
+
+
+@app.delete("/api/admin/logo")
+def delete_logo(current_user: User = Depends(require_roles("admin"))):
+    db = SessionLocal()
+    try:
+        db.query(AppSetting).filter(AppSetting.key == "logo_url").delete()
+        db.commit()
+    finally:
+        db.close()
+    return {"url": None}
+
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("frontend", exist_ok=True)

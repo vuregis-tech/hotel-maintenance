@@ -8,13 +8,13 @@ import os, uuid
 
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
-                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule, RepairLog)
+                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule, RepairLog, Department)
 from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
 from ..services.storage import upload_image as storage_upload
-from ..services.notification import notify_new_request, notify_status_change
+from ..services.notification import notify_new_request, notify_status_change, notify_ooo
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
@@ -40,6 +40,18 @@ def save_upload(file_bytes, ext):
 def get_req(db, job_id):
     """Fresh query after commit to avoid SQLite refresh issues"""
     return db.query(MaintenanceRequest).filter(MaintenanceRequest.id == job_id).first()
+
+
+def get_eligible_tech(db, technician_id) -> User:
+    """คืน User ถ้ารับงานได้: role=technician หรืออยู่ในแผนก can_receive_jobs=True"""
+    tech = db.query(User).filter(User.id == technician_id, User.is_active == True).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
+    can_recv = [d.name for d in db.query(Department).filter(
+        Department.can_receive_jobs == True, Department.is_active == True).all()]
+    if tech.role != "technician" and tech.department not in can_recv:
+        raise HTTPException(status_code=400, detail="แผนกของผู้ใช้นี้ไม่ได้ตั้งค่าให้รับงานได้")
+    return tech
 
 
 # ── List / Get ────────────────────────────────────────
@@ -180,7 +192,13 @@ def create_request(data: RequestCreate, db: Session = Depends(get_db),
     add_history(db, req_id, None, "pending", current_user.id, "สร้างงานใหม่")
     db.commit()
     result = get_req(db, req_id)
-    notify_new_request(result, current_user)   # 🔔 Telegram
+    # query supervisors + on-duty techs สำหรับ tag ในกลุ่ม Technician
+    supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    on_duty_users = (db.query(User)
+                     .join(OnDutySchedule, OnDutySchedule.technician_id == User.id)
+                     .filter(OnDutySchedule.duty_date == today_str).all())
+    notify_new_request(result, current_user, supervisors=supervisors, on_duty_techs=on_duty_users)
     return result
 
 
@@ -217,10 +235,7 @@ def assign_work(job_id: int, data: WorkOrderCreate,
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
     if req.status not in ("pending", "reopened", "external_tech"):
         raise HTTPException(status_code=400, detail="ไม่สามารถจ่ายงานในสถานะนี้")
-    tech = db.query(User).filter(User.id == data.technician_id,
-                                 User.role == "technician").first()
-    if not tech:
-        raise HTTPException(status_code=404, detail="ไม่พบช่าง")
+    tech = get_eligible_tech(db, data.technician_id)
 
     old_wo = (db.query(WorkOrder)
               .filter(WorkOrder.request_id == job_id,
@@ -238,7 +253,9 @@ def assign_work(job_id: int, data: WorkOrderCreate,
     db.commit()
     result = get_req(db, job_id)
     notify_status_change(result, old_status, "assigned", current_user,
-                         f"จ่ายงานให้ {tech.full_name}")   # 🔔
+                         f"จ่ายงานให้ {tech.full_name}",
+                         tag_user=tech,
+                         title="🔧 <b>ASSIGN</b>")   # 🔔
     return result
 
 
@@ -270,7 +287,8 @@ def accept_job(job_id: int, db: Session = Depends(get_db),
     add_history(db, job_id, "assigned", "in_progress", current_user.id, "รับงานแล้ว")
     db.commit()
     result = get_req(db, job_id)
-    notify_status_change(result, "assigned", "in_progress", current_user, "รับงานแล้ว")  # 🔔
+    notify_status_change(result, "assigned", "in_progress", current_user, "รับงานแล้ว",
+                         tag_user=result.reporter, title="🔧 <b>IN PROGRESS</b>")  # 🔔
     return result
 
 
@@ -301,10 +319,7 @@ def recall_job(job_id: int, data: RecallBody,
 
     if data.new_technician_id:
         # Re-assign ให้ช่างใหม่ทันที
-        tech = db.query(User).filter(User.id == data.new_technician_id,
-                                     User.role == "technician").first()
-        if not tech:
-            raise HTTPException(status_code=404, detail="ไม่พบช่าง")
+        tech = get_eligible_tech(db, data.new_technician_id)
         req.status = "assigned"
         db.add(WorkOrder(request_id=job_id, technician_id=data.new_technician_id,
                          assigned_by_id=current_user.id, status="assigned"))
@@ -377,8 +392,12 @@ def reject_job(job_id: int, data: RejectBody,
                 f"ช่าง {current_user.full_name} ปฏิเสธงาน: {data.reason}")
     db.commit()
     result = get_req(db, job_id)
+    supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
     notify_status_change(result, old_status, "pending", current_user,
-                         f"ปฏิเสธงาน: {data.reason}")  # 🔔
+                         f"ปฏิเสธงาน: {data.reason}",
+                         tag_user=supervisors,
+                         title="❌ <b>REJECT</b>",
+                         technician_only=True)  # 🔔
     return result
 
 
@@ -402,10 +421,7 @@ def transfer_job(job_id: int, data: TransferBody,
         wo = (db.query(WorkOrder)
               .filter(WorkOrder.request_id == job_id,
                       WorkOrder.status.in_(["assigned", "in_progress"])).first())
-    target_tech = db.query(User).filter(User.id == data.technician_id,
-                                        User.role == "technician").first()
-    if not target_tech:
-        raise HTTPException(status_code=404, detail="ไม่พบช่างที่ต้องการโอนงาน")
+    target_tech = get_eligible_tech(db, data.technician_id)
     wo.status = "transferred"
     wo.transferred_to_id = data.technician_id
     wo.transfer_note = data.note
@@ -431,10 +447,7 @@ def reassign_work(job_id: int, data: WorkOrderReassign,
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
     if req.status not in ("assigned", "in_progress", "external_tech"):
         raise HTTPException(status_code=400, detail="ไม่สามารถเปลี่ยนช่างในสถานะนี้")
-    tech = db.query(User).filter(User.id == data.technician_id,
-                                 User.role == "technician").first()
-    if not tech:
-        raise HTTPException(status_code=404, detail="ไม่พบช่าง")
+    tech = get_eligible_tech(db, data.technician_id)
     wo = (db.query(WorkOrder)
           .filter(WorkOrder.request_id == job_id,
                   WorkOrder.status.in_(["assigned", "in_progress", "external"])).first())
@@ -458,10 +471,7 @@ def co_assign(job_id: int, data: WorkOrderCoAssign,
     req = get_req(db, job_id)
     if not req:
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
-    tech = db.query(User).filter(User.id == data.technician_id,
-                                 User.role == "technician").first()
-    if not tech:
-        raise HTTPException(status_code=404, detail="ไม่พบช่าง")
+    tech = get_eligible_tech(db, data.technician_id)
     wo = (db.query(WorkOrder)
           .filter(WorkOrder.request_id == job_id,
                   WorkOrder.status.in_(["assigned", "in_progress"])).first())
@@ -558,7 +568,12 @@ def complete_work(job_id: int, data: WorkOrderComplete,
             req.status = "in_progress"
             add_history(db, job_id, old_status, "in_progress", current_user.id, "บันทึกระหว่างทำ")
         db.commit()
-        return get_req(db, job_id)
+        result = get_req(db, job_id)
+        if data.ooo_room:
+            approver = (db.query(User).filter(User.id == data.ooo_notified_user_id).first()
+                        if data.ooo_notified_user_id else None)
+            notify_ooo(result, current_user, data.ooo_start_date, data.ooo_end_date, approver=approver)
+        return result
 
     wo.completed_at = datetime.now()
 
@@ -578,8 +593,16 @@ def complete_work(job_id: int, data: WorkOrderComplete,
     db.commit()
     new_status = "external_tech" if data.is_external else "pending_inspection"
     result = get_req(db, job_id)
-    notify_status_change(result, old_status, new_status, current_user,
-                         f"ต้องใช้ช่างภายนอก: {data.external_note}" if data.is_external else "ซ่อมเสร็จ รอตรวจ")  # 🔔
+    if data.is_external:
+        notify_status_change(result, old_status, new_status, current_user,
+                             f"ต้องใช้ช่างภายนอก: {data.external_note}",
+                             tag_user=result.reporter,
+                             title="🔄 <b>UPDATE</b>")  # 🔔
+    else:
+        notify_status_change(result, old_status, new_status, current_user,
+                             "ซ่อมเสร็จ รอตรวจ",
+                             tag_user=result.reporter,
+                             title="🔍 <b>INSPECTION NEEDED</b>")  # 🔔
     return result
 
 
@@ -617,8 +640,24 @@ def inspect_work(job_id: int, data: InspectionCreate,
                     f"ตรวจไม่ผ่าน: {data.notes or ''}")
     db.commit()
     result = get_req(db, job_id)
-    notify_status_change(result, old_status, result.status, current_user,
-                         data.notes if data.result == "pass" else f"ตรวจไม่ผ่าน: {data.notes or ''}")  # 🔔
+    if data.result == "pass":
+        supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
+        wo_done = next((w for w in result.work_orders if w.status == "completed"), None)
+        assigned_tech = wo_done.technician if wo_done else None
+        tech_tags = [u for u in ([assigned_tech] + supervisors) if u]
+        notify_status_change(result, old_status, "completed", current_user,
+                             data.notes,
+                             title="✅ <b>COMPLETED</b>",
+                             tech_tag_users=tech_tags)  # 🔔
+    else:
+        supervisors_fail = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
+        wo_fail = next((w for w in result.work_orders if w.status == "completed"), None)
+        assigned_tech_fail = wo_fail.technician if wo_fail else None
+        tech_tags_fail = [u for u in ([assigned_tech_fail] + supervisors_fail) if u]
+        notify_status_change(result, old_status, "reopened", current_user,
+                             f"ตรวจไม่ผ่าน: {data.notes or ''}",
+                             title="❌ <b>FAIL INSPECT</b>",
+                             tech_tag_users=tech_tags_fail)  # 🔔
     return result
 
 
@@ -659,7 +698,11 @@ def cancel_request(job_id: int, db: Session = Depends(get_db),
     req.status = "cancelled"
     add_history(db, job_id, old_status, "cancelled", current_user.id, "ยกเลิกงาน")
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, "cancelled", current_user,
+                         tag_user=result.reporter,
+                         title="🚫 <b>CANCELLED</b>")  # 🔔
+    return result
 
 
 # ── Edit Request (by reporter dept, before tech accepts) ────

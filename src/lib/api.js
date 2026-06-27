@@ -129,6 +129,9 @@ export const api = {
   // System
   getStorageStatus: () => request('GET', '/api/system/storage-status'),
   reseedConfig: () => request('POST', '/api/admin/reseed-config'),
+  getLogo: () => request('GET', '/api/system/logo'),
+  uploadLogo: (file) => { const fd = new FormData(); fd.append('file', file); return request('POST', '/api/admin/logo', fd, true) },
+  deleteLogo: () => request('DELETE', '/api/admin/logo'),
 
   // Auth extras
   changePassword: (data) => request('POST', '/api/auth/change-password', data),
