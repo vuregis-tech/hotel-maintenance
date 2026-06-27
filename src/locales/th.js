@@ -76,7 +76,7 @@ export default {
     usernamePlaceholder: 'กรอกชื่อผู้ใช้',
     passwordPlaceholder: 'กรอกรหัสผ่าน',
     systemName: 'ระบบแจ้งซ่อม',
-    hotelMaintenance: 'Hotel Maintenance',
+    hotelMaintenance: 'Work Order',
     changePassword: 'เปลี่ยนรหัสผ่าน',
     oldPassword: 'รหัสผ่านเดิม',
     newPassword: 'รหัสผ่านใหม่',

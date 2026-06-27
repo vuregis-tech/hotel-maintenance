@@ -96,7 +96,7 @@ export default function Layout({ children }) {
           <Wrench className="w-5 h-5 text-white" />
         </div>
         <div>
-          <p className="font-bold text-gray-900 text-sm leading-tight">Hotel Maintenance</p>
+          <p className="font-bold text-gray-900 text-sm leading-tight">Work Order</p>
           <p className="text-xs text-gray-400">{t('auth.systemName')}</p>
         </div>
       </div>
@@ -181,6 +181,11 @@ export default function Layout({ children }) {
             <img src={logoUrl} alt="logo" className="ml-auto h-[50px] w-auto object-contain" />
           )}
         </header>
+
+        {/* Dev banner */}
+        <div className="bg-amber-400 text-amber-900 text-center text-xs font-bold py-1 tracking-widest shrink-0">
+          ⚠ User Testing Version ⚠
+        </div>
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">

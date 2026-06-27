@@ -52,7 +52,7 @@ export default function LoginPage() {
             <Wrench className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">{t('login.welcome')}</h1>
-          <p className="text-gray-500 mt-1">Hotel Maintenance System</p>
+          <p className="text-gray-500 mt-1">Work Order System</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
@@ -107,7 +107,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center gap-1.5 mt-6 text-sm text-gray-400">
           <Hotel className="w-4 h-4" />
-          <span>Hotel Maintenance System v2.0</span>
+          <span>Work Order System v2.0</span>
         </div>
       </div>
     </div>

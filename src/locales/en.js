@@ -76,7 +76,7 @@ export default {
     usernamePlaceholder: 'Enter username',
     passwordPlaceholder: 'Enter password',
     systemName: 'Maintenance System',
-    hotelMaintenance: 'Hotel Maintenance',
+    hotelMaintenance: 'Work Order',
     changePassword: 'Change Password',
     oldPassword: 'Current Password',
     newPassword: 'New Password',
