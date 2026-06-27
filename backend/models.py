@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -253,3 +253,10 @@ class RequestHistory(Base):
 
     request = relationship("MaintenanceRequest", back_populates="history")
     changed_by = relationship("User")
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String(50), primary_key=True)
+    value = Column(Text, nullable=True)
+

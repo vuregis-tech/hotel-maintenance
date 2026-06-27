@@ -36,6 +36,14 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 export default function Layout({ children }) {
   const { user, signOut, mustChangePassword, clearMustChangePassword } = useAuth()
   const { t } = useLang()
+  const [logoUrl, setLogoUrl] = useState(null)
+
+  useEffect(() => {
+    api.getLogo().then(d => setLogoUrl(d.url)).catch(() => {})
+    const handler = (e) => setLogoUrl(e.detail.url)
+    window.addEventListener('logo-updated', handler)
+    return () => window.removeEventListener('logo-updated', handler)
+  }, [])
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showChangePw, setShowChangePw] = useState(false)
@@ -77,14 +85,19 @@ export default function Layout({ children }) {
   const Sidebar = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-        <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-          <Wrench className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Wrench className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-bold text-gray-900 text-sm leading-tight">Hotel Maintenance</p>
+            <p className="text-xs text-gray-400">{t('auth.systemName')}</p>
+          </div>
         </div>
-        <div>
-          <p className="font-bold text-gray-900 text-sm leading-tight">Hotel Maintenance</p>
-          <p className="text-xs text-gray-400">{t('auth.systemName')}</p>
-        </div>
+        {logoUrl && (
+          <img src={logoUrl} alt="logo" className="h-10 w-auto max-w-[72px] object-contain rounded" />
+        )}
       </div>
 
       {/* User info */}
@@ -163,6 +176,9 @@ export default function Layout({ children }) {
             </div>
             <span className="font-semibold text-gray-900 text-sm">{t('auth.systemName')}</span>
           </div>
+          {logoUrl && (
+            <img src={logoUrl} alt="logo" className="ml-auto h-8 w-auto max-w-[56px] object-contain" />
+          )}
         </header>
 
         {/* Page content */}

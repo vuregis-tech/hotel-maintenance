@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useLang } from '../context/LangContext'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database, ImagePlus, Trash } from 'lucide-react'
 
 // ─── Mini reusable inline edit row ───────────────────
 function EditableItem({ name, onSave, onDelete, onMoveUp, onMoveDown, children }) {
@@ -571,6 +571,66 @@ function IssueTypesTab() {
 }
 
 // ─── Main AdminPage ───────────────────────────────────
+function LogoBanner() {
+  const [logoUrl, setLogoUrl] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useState(null)
+
+  useEffect(() => { api.getLogo().then(d => setLogoUrl(d.url)).catch(() => {}) }, [])
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await api.uploadLogo(file)
+      setLogoUrl(res.url)
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: { url: res.url } }))
+      toast.success('อัปโหลด Logo เรียบร้อย')
+    } catch (err) { toast.error(err.message) }
+    finally { setUploading(false); e.target.value = '' }
+  }
+
+  async function handleDelete() {
+    if (!confirm('ลบ Logo ออกใช่ไหม?')) return
+    try {
+      await api.deleteLogo()
+      setLogoUrl(null)
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: { url: null } }))
+      toast.success('ลบ Logo แล้ว')
+    } catch (err) { toast.error(err.message) }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+      <div className="w-20 h-14 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+        {logoUrl
+          ? <img src={logoUrl} alt="logo" className="w-full h-full object-contain p-1" />
+          : <ImagePlus className="w-6 h-6 text-gray-300" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900">Logo</p>
+        <p className="text-xs text-gray-400 mt-0.5">แสดงที่มุมบนขวาของ Sidebar และ Header</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {logoUrl && (
+          <button onClick={handleDelete}
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+            <Trash className="w-4 h-4" />
+          </button>
+        )}
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+          uploading ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 hover:bg-blue-700 text-white'
+        }`}>
+          <ImagePlus className="w-4 h-4" />
+          {uploading ? 'กำลังอัปโหลด...' : logoUrl ? 'เปลี่ยน Logo' : 'อัปโหลด Logo'}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 function ReseedConfigBanner() {
   const { t } = useLang()
   const [confirm, setConfirm] = useState(false)
@@ -677,6 +737,7 @@ export default function AdminPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
+      <LogoBanner />
       <ReseedConfigBanner />
       <StorageStatusBanner />
 
