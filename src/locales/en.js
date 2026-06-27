@@ -2,7 +2,7 @@ export default {
   lang: 'English',
   nav: {
     dashboard: 'Dashboard',
-    newRequest: 'Report Issue',
+    newRequest: 'New Issue',
     requests: 'Job List',
     onDuty: 'On Duty',
     reports: 'Reports',
@@ -92,7 +92,7 @@ export default {
   dashboard: {
     title: 'Dashboard',
     greeting: 'Hello',
-    addRequest: 'Report Issue',
+    addRequest: 'New Issue',
     recentJobs: 'Recent Jobs',
     clearFilter: 'Clear Filter',
     viewAll: 'View All',
@@ -110,7 +110,7 @@ export default {
     },
   },
   request: {
-    title: 'Report Issue',
+    title: 'New Issue',
     listTitle: 'Job List',
     pageSubtitle: 'Fill in all repair request details',
     editTitle: 'Edit Request',
