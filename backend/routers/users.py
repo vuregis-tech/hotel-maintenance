@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List
 from ..database import get_db
 from ..models import User, Department
@@ -18,7 +19,14 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(requi
 
 @router.get("/technicians", response_model=List[UserOut])
 def list_technicians(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(User).filter(User.role == "technician", User.is_active == True).order_by(User.full_name).all()
+    can_receive_depts = [d.name for d in db.query(Department).filter(
+        Department.can_receive_jobs == True, Department.is_active == True).all()]
+    conditions = [User.role == "technician"]
+    if can_receive_depts:
+        conditions.append(User.department.in_(can_receive_depts))
+    return (db.query(User)
+              .filter(User.is_active == True, or_(*conditions))
+              .order_by(User.full_name).all())
 
 
 @router.get("/ooo-notify", response_model=List[UserOut])
@@ -77,6 +85,9 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
         user.is_active = data.is_active
     if data.password:
         user.password_hash = hash_password(data.password)
+    if data.telegram_username is not None:
+        val = data.telegram_username.strip().lstrip("@") or None
+        user.telegram_username = val
     db.commit()
     db.refresh(user)
     return user

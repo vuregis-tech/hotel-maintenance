@@ -45,6 +45,8 @@ def update_department(dept_id: int, data: DepartmentUpdate,
             db.query(User).filter(User.department == old_name).update({"department": new_name})
     if data.show_in_ooo is not None:
         dept.show_in_ooo = data.show_in_ooo
+    if data.can_receive_jobs is not None:
+        dept.can_receive_jobs = data.can_receive_jobs
     db.commit()
     db.refresh(dept)
     return dept

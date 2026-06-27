@@ -33,6 +33,7 @@ class UserCreate(BaseModel):
     department: str
     position: str
     role: str = "staff"
+    telegram_username: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -43,6 +44,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    telegram_username: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -54,6 +56,7 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     must_change_password: bool = False
+    telegram_username: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -227,6 +230,7 @@ class DepartmentCreate(BaseModel):
 class DepartmentUpdate(BaseModel):
     name: Optional[str] = None
     show_in_ooo: Optional[bool] = None
+    can_receive_jobs: Optional[bool] = None
 
 
 class DepartmentOut(BaseModel):
@@ -234,6 +238,7 @@ class DepartmentOut(BaseModel):
     name: str
     is_active: bool
     show_in_ooo: Optional[bool] = False
+    can_receive_jobs: Optional[bool] = False
 
     class Config:
         from_attributes = True

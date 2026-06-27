@@ -17,6 +17,7 @@ class User(Base):
     role = Column(String(20), nullable=False, default="staff")
     is_active = Column(Boolean, default=True)
     must_change_password = Column(Boolean, default=False)
+    telegram_username = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     reported_requests = relationship("MaintenanceRequest", foreign_keys="MaintenanceRequest.reporter_id", back_populates="reporter")
@@ -123,6 +124,7 @@ class Department(Base):
     name = Column(String(100), nullable=False, unique=True)
     is_active = Column(Boolean, default=True)
     show_in_ooo = Column(Boolean, default=False)  # แสดงชื่อ user ใน dropdown ผู้รับแจ้งตอนปิด OOO
+    can_receive_jobs = Column(Boolean, default=False)  # แผนกนี้สามารถรับงานได้ (โชว์ใน assign dropdown)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

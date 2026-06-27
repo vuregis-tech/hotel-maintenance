@@ -215,6 +215,10 @@ def run_migrations():
         ("issue_types", "sort_order", "INTEGER DEFAULT 0"),
         # Security: force password change on first login
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Telegram tagging
+        ("users", "telegram_username", "VARCHAR(100)"),
+        # Department: แผนกที่รับงานได้
+        ("departments", "can_receive_jobs", "BOOLEAN DEFAULT FALSE"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:

@@ -84,6 +84,14 @@ function DepartmentsTab() {
     } catch (err) { toast.error(err.message) }
   }
 
+  async function toggleReceive(id, checked) {
+    try {
+      await api.updateDepartment(id, { can_receive_jobs: checked })
+      setDepts(d => d.map(x => x.id === id ? { ...x, can_receive_jobs: checked } : x))
+      toast.success(t('admin.department.editSuccess'))
+    } catch (err) { toast.error(err.message) }
+  }
+
   return (
     <div>
       <h2 className="font-semibold text-gray-900 mb-4">{t('admin.department.title')}</h2>
@@ -101,6 +109,12 @@ function DepartmentsTab() {
         {depts.map(d => (
           <div key={d.id} className="px-4">
             <EditableItem name={d.name} onSave={name => save(d.id, name)} onDelete={() => del(d.id)}>
+              <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs text-gray-500">
+                <input type="checkbox" checked={!!d.can_receive_jobs}
+                  onChange={e => toggleReceive(d.id, e.target.checked)}
+                  className="w-3.5 h-3.5 text-green-600 rounded" />
+                {t('admin.department.canReceiveJobs')}
+              </label>
               <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs text-gray-500">
                 <input type="checkbox" checked={!!d.show_in_ooo}
                   onChange={e => toggleOOO(d.id, e.target.checked)}
@@ -122,7 +136,7 @@ function UsersTab() {
   const [depts, setDepts] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editUser, setEditUser] = useState(null)
-  const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' })
+  const [form, setForm] = useState({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff', telegram_username: '' })
   const [saving, setSaving] = useState(false)
   const [sortCol, setSortCol] = useState('full_name')
   const [sortDir, setSortDir] = useState('asc')
@@ -148,8 +162,8 @@ function UsersTab() {
     api.getDepartments().then(setDepts).catch(() => {})
   }, [])
 
-  function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff' }); setEditUser(null); setShowForm(true) }
-  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active }); setEditUser(u); setShowForm(true) }
+  function openNew() { setForm({ username: '', password: '', full_name: '', department: '', position: '', role: 'staff', telegram_username: '' }); setEditUser(null); setShowForm(true) }
+  function openEdit(u) { setForm({ username: u.username, password: '', full_name: u.full_name, department: u.department, position: u.position, role: u.role, is_active: u.is_active, telegram_username: u.telegram_username || '' }); setEditUser(u); setShowForm(true) }
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -167,7 +181,7 @@ function UsersTab() {
     setSaving(true)
     try {
       if (editUser) {
-        const updated = await api.updateUser(editUser.id, { username: form.username, full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) })
+        const updated = await api.updateUser(editUser.id, { username: form.username, full_name: form.full_name, department: form.department, position: form.position, role: form.role, is_active: form.is_active, telegram_username: form.telegram_username || null, ...(form.password ? { password: form.password } : {}) })
         setUsers(u => u.map(x => x.id === editUser.id ? updated : x))
       } else {
         const created = await api.createUser(form)
@@ -186,10 +200,11 @@ function UsersTab() {
   }
 
   const formFields = [
-    ['full_name', t('admin.user.fullName'), 'text'],
-    ['username', t('admin.user.username'), 'text'],
-    ['password', editUser ? t('admin.user.passwordChangeHint') : t('admin.user.password'), 'password'],
-    ['position', t('admin.user.position'), 'text'],
+    ['full_name', t('admin.user.fullName'), 'text', ''],
+    ['username', t('admin.user.username'), 'text', ''],
+    ['password', editUser ? t('admin.user.passwordChangeHint') : t('admin.user.password'), 'password', ''],
+    ['position', t('admin.user.position'), 'text', ''],
+    ['telegram_username', t('admin.user.telegramUsername'), 'text', 'username (ไม่ต้องใส่ @)'],
   ]
 
   return (
@@ -252,10 +267,10 @@ function UsersTab() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
             <h3 className="font-semibold text-gray-900 mb-4">{editUser ? t('admin.user.editUser') : t('admin.user.newUserTitle')}</h3>
             <div className="space-y-3">
-              {formFields.map(([f, label, type]) => (
+              {formFields.map(([f, label, type, placeholder]) => (
                 <div key={f}>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">{label}</label>
-                  <input type={type} value={form[f]} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
+                  <input type={type} value={form[f] ?? ''} placeholder={placeholder || ''} onChange={e => setForm(x => ({ ...x, [f]: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
