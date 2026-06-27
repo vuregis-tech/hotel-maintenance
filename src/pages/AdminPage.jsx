@@ -738,7 +738,6 @@ export default function AdminPage() {
     <div className="max-w-5xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
       <LogoBanner />
-      <ReseedConfigBanner />
       <StorageStatusBanner />
 
       <div className="flex gap-1 border-b border-gray-200">
