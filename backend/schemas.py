@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -125,6 +125,7 @@ class MaterialItem(BaseModel):
     name: str
     qty: float = 1
     unit: str = "ชิ้น"
+    unit_cost: float = Field(default=0, ge=0)
 
 
 # ── Co-Assignment ─────────────────────────────────────

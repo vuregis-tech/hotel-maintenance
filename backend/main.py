@@ -207,6 +207,7 @@ def run_migrations():
         ("work_orders", "ooo_start_date", "VARCHAR(10)"),
         ("work_orders", "ooo_end_date", "VARCHAR(10)"),
         ("work_orders", "ooo_notified_user_id", "INTEGER"),
+        ("work_orders", "ooo_telegram_sent", "BOOLEAN DEFAULT FALSE"),
         # Feature 6: แผนกที่แสดงชื่อใน dropdown ผู้รับแจ้ง OOO
         ("departments", "show_in_ooo", "BOOLEAN DEFAULT FALSE"),
         # Feature 7: sort order for areas and issue types
