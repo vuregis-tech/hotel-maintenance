@@ -43,10 +43,12 @@ def get_req(db, job_id):
 
 
 def get_eligible_tech(db, technician_id) -> User:
-    """คืน User ถ้ารับงานได้: role=technician หรืออยู่ในแผนก can_receive_jobs=True"""
+    """คืน User ถ้ารับงานได้: role=technician หรืออยู่ในแผนก can_receive_jobs=True (ยกเว้น role=staff)"""
     tech = db.query(User).filter(User.id == technician_id, User.is_active == True).first()
     if not tech:
         raise HTTPException(status_code=404, detail="ไม่พบผู้ใช้")
+    if tech.role == "staff":
+        raise HTTPException(status_code=400, detail="ผู้ใช้ role Staff ไม่สามารถรับงานได้")
     can_recv = [d.name for d in db.query(Department).filter(
         Department.can_receive_jobs == True, Department.is_active == True).all()]
     if tech.role != "technician" and tech.department not in can_recv:
@@ -421,6 +423,8 @@ def transfer_job(job_id: int, data: TransferBody,
         wo = (db.query(WorkOrder)
               .filter(WorkOrder.request_id == job_id,
                       WorkOrder.status.in_(["assigned", "in_progress"])).first())
+    if not wo:
+        raise HTTPException(status_code=404, detail="ไม่พบ Work Order ที่สามารถโอนได้")
     target_tech = get_eligible_tech(db, data.technician_id)
     wo.status = "transferred"
     wo.transferred_to_id = data.technician_id
@@ -428,12 +432,18 @@ def transfer_job(job_id: int, data: TransferBody,
     new_wo = WorkOrder(request_id=job_id, technician_id=data.technician_id,
                        assigned_by_id=current_user.id, status="assigned")
     db.add(new_wo)
+    old_status = req.status
     req.status = "assigned"
-    add_history(db, job_id, req.status, "assigned", current_user.id,
+    add_history(db, job_id, old_status, "assigned", current_user.id,
                 f"โอนงานจาก {current_user.full_name} → {target_tech.full_name}"
                 + (f": {data.note}" if data.note else ""))
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, "assigned", current_user,
+                         f"โอนงานให้ {target_tech.full_name}",
+                         tag_user=target_tech,
+                         title="🔧 <b>ASSIGN</b>")
+    return result
 
 
 # ── Re-assign / Co-assign ──────────────────────────────
@@ -551,6 +561,11 @@ def complete_work(job_id: int, data: WorkOrderComplete,
     wo.repair_details = data.repair_details
     wo.materials_used = materials_json
     wo.total_cost = total_cost if total_cost > 0 else None
+    if wo.ooo_telegram_sent and (
+            not data.ooo_room or
+            wo.ooo_start_date != data.ooo_start_date or
+            wo.ooo_end_date != data.ooo_end_date):
+        wo.ooo_telegram_sent = False
     wo.ooo_room = data.ooo_room
     wo.ooo_days = None  # replaced by date range
     wo.ooo_start_date = data.ooo_start_date
@@ -558,6 +573,9 @@ def complete_work(job_id: int, data: WorkOrderComplete,
     wo.ooo_notified_user_id = data.ooo_notified_user_id
 
     old_status = req.status
+    should_notify_ooo = data.ooo_room and data.ooo_start_date and not wo.ooo_telegram_sent
+    if should_notify_ooo:
+        wo.ooo_telegram_sent = True
 
     if not data.is_complete:
         # บันทึกระหว่างทำ — เก็บข้อมูลแต่ยังไม่ส่งตรวจ
@@ -569,7 +587,7 @@ def complete_work(job_id: int, data: WorkOrderComplete,
             add_history(db, job_id, old_status, "in_progress", current_user.id, "บันทึกระหว่างทำ")
         db.commit()
         result = get_req(db, job_id)
-        if data.ooo_room:
+        if should_notify_ooo:
             approver = (db.query(User).filter(User.id == data.ooo_notified_user_id).first()
                         if data.ooo_notified_user_id else None)
             notify_ooo(result, current_user, data.ooo_start_date, data.ooo_end_date, approver=approver)
@@ -603,6 +621,10 @@ def complete_work(job_id: int, data: WorkOrderComplete,
                              "ซ่อมเสร็จ รอตรวจ",
                              tag_user=result.reporter,
                              title="🔍 <b>INSPECTION NEEDED</b>")  # 🔔
+    if should_notify_ooo:
+        approver = (db.query(User).filter(User.id == data.ooo_notified_user_id).first()
+                    if data.ooo_notified_user_id else None)
+        notify_ooo(result, current_user, data.ooo_start_date, data.ooo_end_date, approver=approver)
     return result
 
 

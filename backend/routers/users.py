@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from typing import List
 from ..database import get_db
 from ..models import User, Department
@@ -23,7 +23,9 @@ def list_technicians(db: Session = Depends(get_db), current_user: User = Depends
         Department.can_receive_jobs == True, Department.is_active == True).all()]
     conditions = [User.role == "technician"]
     if can_receive_depts:
-        conditions.append(User.department.in_(can_receive_depts))
+        conditions.append(
+            and_(User.department.in_(can_receive_depts), User.role != "staff")
+        )
     return (db.query(User)
               .filter(User.is_active == True, or_(*conditions))
               .order_by(User.full_name).all())

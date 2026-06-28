@@ -161,6 +161,7 @@ class WorkOrder(Base):
     ooo_start_date = Column(String(10), nullable=True)   # YYYY-MM-DD
     ooo_end_date = Column(String(10), nullable=True)     # YYYY-MM-DD
     ooo_notified_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ooo_telegram_sent = Column(Boolean, default=False)
     is_external = Column(Boolean, default=False)   # ต้องใช้ช่างภายนอก
     external_note = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)

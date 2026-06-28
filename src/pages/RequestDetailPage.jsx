@@ -119,7 +119,7 @@ function MaterialsTable({ materials, onChange }) {
   const { t } = useLang()
 
   function addRow() {
-    onChange([...materials, { name: '', qty: 1, unit: t('workOrder.defaultUnit') }])
+    onChange([...materials, { name: '', qty: 1, unit: t('workOrder.defaultUnit'), unit_cost: 0 }])
   }
   function removeRow(i) {
     onChange(materials.filter((_, idx) => idx !== i))
@@ -155,6 +155,7 @@ function MaterialsTable({ materials, onChange }) {
                 <th className="text-left px-3 py-2 text-orange-700 font-medium">{t('workOrder.materialName')}</th>
                 <th className="text-right px-3 py-2 text-orange-700 font-medium w-16">{t('workOrder.qty')}</th>
                 <th className="text-left px-3 py-2 text-orange-700 font-medium w-16">{t('workOrder.unit')}</th>
+                <th className="text-right px-3 py-2 text-orange-700 font-medium w-20">{t('workOrder.unitCost')}</th>
                 <th className="px-2 py-2 w-8"></th>
               </tr>
             </thead>
@@ -174,6 +175,11 @@ function MaterialsTable({ materials, onChange }) {
                   <td className="px-2 py-2 w-16">
                     <input value={m.unit} onChange={e => updateRow(i, 'unit', e.target.value)}
                       className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
+                  </td>
+                  <td className="px-2 py-2 w-20">
+                    <input type="number" min="0" step="0.01" value={m.unit_cost ?? 0}
+                      onChange={e => updateRow(i, 'unit_cost', parseFloat(e.target.value) || 0)}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-8">
                     <button onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500 transition-colors">
@@ -238,8 +244,13 @@ export default function RequestDetailPage() {
         .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
         .catch(() => setOnDutyTechs([]))
     }
-    if (modal === 'complete' && allUsers.length === 0) {
-      api.getOOONotifyUsers().then(setAllUsers).catch(() => setAllUsers([]))
+    if (modal === 'complete') {
+      setCompleteForm({
+        repair_details: '', materials: [], ooo_room: false,
+        ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
+        is_external: false, external_note: '', is_complete: false
+      })
+      if (allUsers.length === 0) api.getOOONotifyUsers().then(setAllUsers).catch(() => setAllUsers([]))
     }
     if (modal === 'edit') {
       if (issueTypes.length === 0) api.getIssueTypes().then(setIssueTypes)
@@ -484,7 +495,7 @@ export default function RequestDetailPage() {
     try { parsedMaterials = JSON.parse(wo.materials_used) } catch {}
   }
 
-  const matHeaders = [t('workOrder.materialName'), t('workOrder.qty'), t('workOrder.unit')]
+  const matHeaders = [t('workOrder.materialName'), t('workOrder.qty'), t('workOrder.unit'), t('workOrder.unitCost')]
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -710,6 +721,7 @@ export default function RequestDetailPage() {
                           <td className="px-2 py-1.5">{m.name}</td>
                           <td className="px-2 py-1.5 text-right font-medium">{m.qty}</td>
                           <td className="px-2 py-1.5">{m.unit}</td>
+                          <td className="px-2 py-1.5 text-right">{m.unit_cost ?? 0}</td>
                         </tr>
                       ))}
                     </tbody>
