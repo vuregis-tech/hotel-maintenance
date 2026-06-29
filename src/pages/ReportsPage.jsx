@@ -57,6 +57,8 @@ function SummaryTab() {
   const [loading, setLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedJobId, setSelectedJobId] = useState(null)
+  const [departments, setDepartments] = useState([])
+  const [deptFilter, setDeptFilter] = useState('')
 
   const SUMMARY_FILTERS = {
     all:                { label: t('reports.stats.all'),              match: () => true },
@@ -78,7 +80,10 @@ function SummaryTab() {
     }},
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    loadData()
+    api.getDepartments().then(setDepartments).catch(() => {})
+  }, [])
 
   async function loadData() {
     setLoading(true)
@@ -93,8 +98,15 @@ function SummaryTab() {
 
   function clear() {
     const d = getDefaultDates()
-    setDateFrom(d.from); setDateTo(d.to); setActiveFilter('all')
+    setDateFrom(d.from); setDateTo(d.to); setActiveFilter('all'); setDeptFilter('')
   }
+
+  const deptOptions = (() => {
+    const apiNames = departments.map(d => d.name)
+    const apiSet = new Set(apiNames)
+    const extra = [...new Set(list.map(j => j.reporter?.department).filter(Boolean))].filter(n => !apiSet.has(n))
+    return [...apiNames, ...extra]
+  })()
 
   const statCards = summary ? [
     { key: 'all',                label: t('reports.stats.all'),               value: summary.total,               color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
@@ -109,7 +121,10 @@ function SummaryTab() {
     { key: 'ooo',                label: t('reports.stats.ooo'),               value: summary.ooo_count,           color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
   ] : []
 
-  const filteredList = list.filter(SUMMARY_FILTERS[activeFilter]?.match ?? (() => true))
+  const filteredList = list.filter(j => {
+    const matchDept = !deptFilter || !j.reporter?.department || j.reporter.department === deptFilter
+    return matchDept && (SUMMARY_FILTERS[activeFilter]?.match ?? (() => true))(j)
+  })
 
   const colHeaders = [
     t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.area'),
@@ -121,7 +136,16 @@ function SummaryTab() {
       <div className="space-y-4">
         <DateFilter dateFrom={dateFrom} dateTo={dateTo}
           onFromChange={setDateFrom} onToChange={setDateTo}
-          onSearch={loadData} onClear={clear} />
+          onSearch={loadData} onClear={clear}>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t('request.filterDept')}</label>
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">{t('common.all')}</option>
+              {deptOptions.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+        </DateFilter>
 
         {summary && (
           <>

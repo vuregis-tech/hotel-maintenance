@@ -59,6 +59,8 @@ def delete_department(dept_id: int,
     dept = db.query(Department).filter(Department.id == dept_id).first()
     if not dept:
         raise HTTPException(status_code=404, detail="ไม่พบแผนก")
+    # Clear department from users so future jobs don't carry a deleted dept name
+    db.query(User).filter(User.department == dept.name).update({"department": None})
     dept.is_active = False
     db.commit()
     return {"ok": True}
