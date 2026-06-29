@@ -743,13 +743,16 @@ function SLASection() {
   const { t } = useLang()
   const [saving, setSaving] = useState(false)
   const [slaLoading, setSlaLoading] = useState(true)
+  const [slaLoadError, setSlaLoadError] = useState(false)
   const [slaForm, setSlaForm] = useState({
     normal:     { infinite: true,  hours: 0, mins: 0 },
     urgent:     { infinite: true,  hours: 0, mins: 0 },
     very_urgent:{ infinite: true,  hours: 0, mins: 0 },
   })
 
-  useEffect(() => {
+  function loadSLA() {
+    setSlaLoading(true)
+    setSlaLoadError(false)
     api.getSLASettings().then(data => {
       const toForm = (val) => val
         ? { infinite: false, hours: Math.floor(val / 60), mins: val % 60 }
@@ -760,8 +763,14 @@ function SLASection() {
         very_urgent: toForm(data.very_urgent),
       })
       setSlaLoading(false)
-    }).catch(err => toast.error(err.message))
-  }, [])
+    }).catch(err => {
+      toast.error(err.message)
+      setSlaLoading(false)
+      setSlaLoadError(true)
+    })
+  }
+
+  useEffect(() => { loadSLA() }, [])
 
   async function handleSave() {
     setSaving(true)
@@ -817,8 +826,14 @@ function SLASection() {
           )
         })}
       </div>
+      {slaLoadError && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-red-600">
+          <span>{t('common.loadError')}</span>
+          <button onClick={loadSLA} className="underline hover:no-underline">{t('common.retry')}</button>
+        </div>
+      )}
       <div className="mt-4 flex justify-end">
-        <button onClick={handleSave} disabled={saving || slaLoading}
+        <button onClick={handleSave} disabled={saving || slaLoading || slaLoadError}
           className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
           {saving ? t('common.saving') : t('common.save')}
         </button>

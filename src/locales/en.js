@@ -41,6 +41,8 @@ export default {
     search: 'Search',
     loading: 'Loading...',
     saving: 'Saving...',
+    loadError: 'Failed to load data',
+    retry: 'Retry',
     noData: 'No data',
     noFound: 'No results found',
     all: 'All',

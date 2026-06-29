@@ -41,6 +41,8 @@ export default {
     search: 'ค้นหา',
     loading: 'กำลังโหลด...',
     saving: 'กำลังบันทึก...',
+    loadError: 'โหลดข้อมูลไม่สำเร็จ',
+    retry: 'ลองใหม่',
     noData: 'ไม่มีข้อมูล',
     noFound: 'ไม่พบข้อมูล',
     all: 'ทั้งหมด',
