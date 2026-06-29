@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -6,7 +6,7 @@ import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
-import { Search, DoorClosed } from 'lucide-react'
+import { ChevronDown, DoorClosed, Search } from 'lucide-react'
 
 export default function RequestsPage() {
   const { user } = useAuth()
@@ -18,6 +18,12 @@ export default function RequestsPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [search, setSearch] = useState('')
   const [slaSettings, setSlaSettings] = useState({})
+
+  // Department filter
+  const [departments, setDepartments] = useState([])
+  const [deptFilter, setDeptFilter] = useState(new Set()) // empty = all
+  const [deptOpen, setDeptOpen] = useState(false)
+  const deptRef = useRef(null)
 
   const STATUSES = [
     { value: '', label: t('common.all') },
@@ -32,6 +38,7 @@ export default function RequestsPage() {
 
   useEffect(() => {
     api.getSLASettings().then(setSlaSettings).catch(() => {})
+    api.getDepartments().then(setDepartments).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -40,6 +47,24 @@ export default function RequestsPage() {
       .then(setJobs)
       .finally(() => setLoading(false))
   }, [filterStatus])
+
+  // Close dept dropdown on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (deptRef.current && !deptRef.current.contains(e.target)) setDeptOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function toggleDept(name) {
+    setDeptFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   function elapsedMins(createdAt) {
     return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
@@ -60,11 +85,18 @@ export default function RequestsPage() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`
   }
 
-  const filtered = jobs.filter(j =>
-    !search || j.description.toLowerCase().includes(search.toLowerCase()) ||
-    j.request_number.toLowerCase().includes(search.toLowerCase()) ||
-    j.reporter?.full_name?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = jobs.filter(j => {
+    const matchSearch = !search ||
+      j.description.toLowerCase().includes(search.toLowerCase()) ||
+      j.request_number.toLowerCase().includes(search.toLowerCase()) ||
+      j.reporter?.full_name?.toLowerCase().includes(search.toLowerCase())
+    const matchDept = deptFilter.size === 0 || deptFilter.has(j.reporter?.department)
+    return matchSearch && matchDept
+  })
+
+  const deptLabel = deptFilter.size === 0
+    ? t('request.allDepts')
+    : `${t('request.filterDept')} (${deptFilter.size})`
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -78,6 +110,48 @@ export default function RequestsPage() {
             placeholder={t('request.searchPlaceholder')}
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        {/* Department checkbox dropdown */}
+        <div ref={deptRef} className="relative">
+          <button
+            onClick={() => setDeptOpen(v => !v)}
+            className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 whitespace-nowrap ${
+              deptFilter.size > 0
+                ? 'border-blue-400 bg-blue-50 text-blue-700 font-medium'
+                : 'border-gray-300 text-gray-700'
+            }`}>
+            {deptLabel}
+            <ChevronDown className={`w-4 h-4 transition-transform ${deptOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {deptOpen && (
+            <div className="absolute z-20 top-full mt-1 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[180px] max-h-64 overflow-y-auto">
+              {/* All option */}
+              <label className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded accent-blue-600"
+                  checked={deptFilter.size === 0}
+                  onChange={() => setDeptFilter(new Set())}
+                  readOnly={deptFilter.size === 0}
+                />
+                <span className="font-medium">{t('common.all')}</span>
+              </label>
+              {departments.length > 0 && <div className="border-t border-gray-100 my-1" />}
+              {departments.map(d => (
+                <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-blue-600"
+                    checked={deptFilter.has(d.name)}
+                    onChange={() => toggleDept(d.name)}
+                  />
+                  <span>{d.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}

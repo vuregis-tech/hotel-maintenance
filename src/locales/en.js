@@ -176,6 +176,8 @@ export default {
     techTag: 'Tech',
     itemsCount: 'items',
     clearTime: 'Clear time',
+    filterDept: 'Dept.',
+    allDepts: 'All Depts',
   },
   workOrder: {
     assign: 'Assign',
