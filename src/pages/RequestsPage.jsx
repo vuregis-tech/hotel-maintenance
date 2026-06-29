@@ -17,6 +17,7 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState('')
   const [search, setSearch] = useState('')
+  const [slaSettings, setSlaSettings] = useState({})
 
   const STATUSES = [
     { value: '', label: t('common.all') },
@@ -30,11 +31,34 @@ export default function RequestsPage() {
   ]
 
   useEffect(() => {
+    api.getSLASettings().then(setSlaSettings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     setLoading(true)
     api.getJobs({ status: filterStatus || undefined })
       .then(setJobs)
       .finally(() => setLoading(false))
   }, [filterStatus])
+
+  function elapsedMins(createdAt) {
+    return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
+  }
+  const SLA_OPEN = ['pending', 'assigned', 'in_progress', 'reopened', 'external_tech']
+  function slaColor(job) {
+    if (!SLA_OPEN.includes(job.status)) return ''
+    const priority = job.priority || 'normal'
+    const threshold = slaSettings[priority]
+    if (!threshold) return ''
+    const elapsed = elapsedMins(job.created_at)
+    if (elapsed >= threshold) return 'bg-red-50 border-l-4 border-red-400'
+    if (elapsed >= threshold * 0.8) return 'bg-orange-50 border-l-4 border-orange-400'
+    return ''
+  }
+  function fmtElapsed(mins) {
+    if (mins < 60) return `${mins}m`
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`
+  }
 
   const filtered = jobs.filter(j =>
     !search || j.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -83,7 +107,7 @@ export default function RequestsPage() {
         ) : (
           filtered.map(job => (
             <Link key={job.id} to={`/requests/${job.id}`}
-              className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors block">
+              className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors block ${slaColor(job)}`}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <span className="text-xs font-mono text-gray-400">{job.request_number}</span>
@@ -109,7 +133,12 @@ export default function RequestsPage() {
                 </div>
               </div>
               <div className="flex-shrink-0 text-right text-xs text-gray-400">
-                {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : ''}
+                <div>{job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : ''}</div>
+                {SLA_OPEN.includes(job.status) && (
+                  <div className={`mt-0.5 font-medium ${slaSettings[job.priority || 'normal'] && elapsedMins(job.created_at) >= slaSettings[job.priority || 'normal'] ? 'text-red-600' : 'text-gray-400'}`}>
+                    ⏱ {fmtElapsed(elapsedMins(job.created_at))}
+                  </div>
+                )}
               </div>
             </Link>
           ))

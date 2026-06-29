@@ -55,6 +55,7 @@ export const api = {
   getUsers: () => request('GET', '/api/users'),
   getOOONotifyUsers: () => request('GET', '/api/users/ooo-notify'),
   getTechnicians: () => request('GET', '/api/users/technicians'),
+  getTechWorkload: () => request('GET', '/api/users/technicians/workload'),
   createUser: (data) => request('POST', '/api/users', data),
   updateUser: (id, data) => request('PUT', `/api/users/${id}`, data),
   deleteUser: (id) => request('DELETE', `/api/users/${id}`),
@@ -125,6 +126,10 @@ export const api = {
 
   // On-duty today (convenience)
   getOnDutyToday: () => request('GET', '/api/onduty'),
+
+  // SLA
+  getSLASettings: () => request('GET', '/api/admin/sla'),
+  updateSLASettings: (data) => request('PUT', '/api/admin/sla', data),
 
   // System
   getStorageStatus: () => request('GET', '/api/system/storage-status'),

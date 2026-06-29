@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useLang } from '../context/LangContext'
+import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database, ImagePlus, Trash } from 'lucide-react'
 
@@ -738,8 +739,112 @@ function StorageStatusBanner() {
   )
 }
 
+function SLASection() {
+  const { t } = useLang()
+  const [saving, setSaving] = useState(false)
+  const [slaLoading, setSlaLoading] = useState(true)
+  const [slaLoadError, setSlaLoadError] = useState(false)
+  const [slaForm, setSlaForm] = useState({
+    normal:     { infinite: true,  hours: 0, mins: 0 },
+    urgent:     { infinite: true,  hours: 0, mins: 0 },
+    very_urgent:{ infinite: true,  hours: 0, mins: 0 },
+  })
+
+  function loadSLA() {
+    setSlaLoading(true)
+    setSlaLoadError(false)
+    api.getSLASettings().then(data => {
+      const toForm = (val) => val
+        ? { infinite: false, hours: Math.floor(val / 60), mins: val % 60 }
+        : { infinite: true, hours: 0, mins: 0 }
+      setSlaForm({
+        normal:      toForm(data.normal),
+        urgent:      toForm(data.urgent),
+        very_urgent: toForm(data.very_urgent),
+      })
+      setSlaLoading(false)
+    }).catch(err => {
+      toast.error(err.message)
+      setSlaLoading(false)
+      setSlaLoadError(true)
+    })
+  }
+
+  useEffect(() => { loadSLA() }, [])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const toMins = (f) => f.infinite ? null : (f.hours * 60 + f.mins) || null
+      await api.updateSLASettings({
+        normal:      toMins(slaForm.normal),
+        urgent:      toMins(slaForm.urgent),
+        very_urgent: toMins(slaForm.very_urgent),
+      })
+      toast.success(t('admin.sla.saved'))
+    } catch (err) { toast.error(err.message) }
+    finally { setSaving(false) }
+  }
+
+  const priorities = [
+    { key: 'normal',      label: t('admin.sla.normal') },
+    { key: 'urgent',      label: t('admin.sla.urgent') },
+    { key: 'very_urgent', label: t('admin.sla.very_urgent') },
+  ]
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <h2 className="font-semibold text-gray-900 mb-4">{t('admin.sla.title')}</h2>
+      <div className="space-y-4">
+        {priorities.map(({ key, label }) => {
+          const f = slaForm[key]
+          return (
+            <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 border border-gray-200 rounded-lg">
+              <div className="w-52 flex-shrink-0">
+                <span className="text-sm font-medium text-gray-800">{label}</span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer flex-shrink-0">
+                <input type="checkbox" checked={f.infinite}
+                  onChange={e => setSlaForm(prev => ({ ...prev, [key]: { ...prev[key], infinite: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded" />
+                <span className="text-sm text-gray-600">{t('admin.sla.infinite')}</span>
+              </label>
+              {!f.infinite && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">{t('admin.sla.threshold')}:</span>
+                  <input type="number" min="0" max="23" value={f.hours}
+                    onChange={e => setSlaForm(prev => ({ ...prev, [key]: { ...prev[key], hours: Math.min(23, Math.max(0, parseInt(e.target.value) || 0)) } }))}
+                    className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <span className="text-xs text-gray-500">{t('admin.sla.hours')}</span>
+                  <input type="number" min="0" max="59" value={f.mins}
+                    onChange={e => setSlaForm(prev => ({ ...prev, [key]: { ...prev[key], mins: Math.min(59, Math.max(0, parseInt(e.target.value) || 0)) } }))}
+                    className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <span className="text-xs text-gray-500">{t('admin.sla.minutes')}</span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {slaLoadError && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-red-600">
+          <span>{t('common.loadError')}</span>
+          <button onClick={loadSLA} className="underline hover:no-underline">{t('common.retry')}</button>
+        </div>
+      )}
+      <div className="mt-4 flex justify-end">
+        <button onClick={handleSave} disabled={saving || slaLoading || slaLoadError}
+          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          {saving ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { t } = useLang()
+  const { user } = useAuth()
   const [tab, setTab] = useState('users')
 
   const tabs = [
@@ -754,6 +859,7 @@ export default function AdminPage() {
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
       <LogoBanner />
       <StorageStatusBanner />
+      {user?.role === 'admin' && <SLASection />}
 
       <div className="flex gap-1 border-b border-gray-200">
         {tabs.map(tb => (
