@@ -6,8 +6,10 @@ import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
-import { ChevronDown, DoorClosed, Search } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, DoorClosed, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const PAGE_SIZE = 50
 
 export default function RequestsPage() {
   const { user } = useAuth()
@@ -19,6 +21,7 @@ export default function RequestsPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [search, setSearch] = useState('')
   const [slaSettings, setSlaSettings] = useState({})
+  const [page, setPage] = useState(1)
 
   // Department filter
   const [departments, setDepartments] = useState([])
@@ -44,10 +47,14 @@ export default function RequestsPage() {
 
   useEffect(() => {
     setLoading(true)
+    setPage(1)
     api.getJobs({ status: filterStatus || undefined, limit: 1000 })
       .then(setJobs)
       .finally(() => setLoading(false))
   }, [filterStatus])
+
+  // Reset page when search changes
+  useEffect(() => { setPage(1) }, [search])
 
   // Close dept dropdown on outside click
   useEffect(() => {
@@ -59,12 +66,18 @@ export default function RequestsPage() {
   }, [])
 
   function toggleDept(name) {
+    setPage(1)
     setDeptFilter(prev => {
       const next = new Set(prev)
       if (next.has(name)) next.delete(name)
       else next.add(name)
       return next
     })
+  }
+
+  function clearDeptFilter() {
+    setPage(1)
+    setDeptFilter(new Set())
   }
 
   function elapsedMins(createdAt) {
@@ -86,8 +99,7 @@ export default function RequestsPage() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`
   }
 
-  // Bug 4: merge active departments (from API) with any extra names that appear in loaded jobs
-  // (covers soft-deleted departments whose jobs are still in the list)
+  // Merge active departments from API + any extra dept names from loaded jobs (covers soft-deleted depts)
   const deptOptions = (() => {
     const apiNames = departments.map(d => d.name)
     const apiSet = new Set(apiNames)
@@ -102,10 +114,16 @@ export default function RequestsPage() {
       j.description?.toLowerCase().includes(lowerSearch) ||
       j.request_number?.toLowerCase().includes(lowerSearch) ||
       j.reporter?.full_name?.toLowerCase().includes(lowerSearch)
-    // Jobs with no reporter department are always shown (cannot be categorised)
+    // Jobs with no reporter department always shown (cannot be categorised)
     const matchDept = deptFilter.size === 0 || !j.reporter?.department || deptFilter.has(j.reporter.department)
     return matchSearch && matchDept
   })
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const showFrom = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const showTo = Math.min(safePage * PAGE_SIZE, filtered.length)
 
   const deptLabel = deptFilter.size === 0
     ? t('request.allDepts')
@@ -138,14 +156,12 @@ export default function RequestsPage() {
           </button>
           {deptOpen && (
             <div className="absolute z-20 top-full mt-1 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[180px] max-h-64 overflow-y-auto">
-              {/* All option */}
               <label className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
                 <input
                   type="checkbox"
                   className="w-4 h-4 rounded accent-blue-600"
                   checked={deptFilter.size === 0}
-                  onChange={() => setDeptFilter(new Set())}
-                  readOnly={deptFilter.size === 0}
+                  onChange={clearDeptFilter}
                 />
                 <span className="font-medium">{t('common.all')}</span>
               </label>
@@ -192,7 +208,7 @@ export default function RequestsPage() {
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">{t('request.noJobs')}</div>
         ) : (
-          filtered.map(job => (
+          paginated.map(job => (
             <Link key={job.id} to={`/requests/${job.id}`}
               className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors block ${slaColor(job)}`}>
               <div className="flex-1 min-w-0">
@@ -232,7 +248,51 @@ export default function RequestsPage() {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 text-right">{filtered.length} {t('request.itemsCount')}</p>
+      {/* Pagination + count */}
+      <div className="flex items-center justify-between text-xs text-gray-400">
+        <span>
+          {filtered.length === 0 ? '0' : `${showFrom}–${showTo}`} / {filtered.length} {t('request.itemsCount')}
+        </span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((p, idx) =>
+                p === '…' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`min-w-[28px] h-7 rounded text-xs font-medium ${
+                      p === safePage
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-gray-100 text-gray-600'
+                    }`}>
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
