@@ -7,6 +7,7 @@ import StatusBadge from '../components/common/StatusBadge'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 import { ChevronDown, DoorClosed, Search } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function RequestsPage() {
   const { user } = useAuth()
@@ -38,12 +39,12 @@ export default function RequestsPage() {
 
   useEffect(() => {
     api.getSLASettings().then(setSlaSettings).catch(() => {})
-    api.getDepartments().then(setDepartments).catch(() => {})
+    api.getDepartments().then(setDepartments).catch(() => toast.error('โหลดรายชื่อแผนกไม่สำเร็จ'))
   }, [])
 
   useEffect(() => {
     setLoading(true)
-    api.getJobs({ status: filterStatus || undefined })
+    api.getJobs({ status: filterStatus || undefined, limit: 1000 })
       .then(setJobs)
       .finally(() => setLoading(false))
   }, [filterStatus])
@@ -85,12 +86,24 @@ export default function RequestsPage() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`
   }
 
+  // Bug 4: merge active departments (from API) with any extra names that appear in loaded jobs
+  // (covers soft-deleted departments whose jobs are still in the list)
+  const deptOptions = (() => {
+    const apiNames = departments.map(d => d.name)
+    const apiSet = new Set(apiNames)
+    const extra = [...new Set(jobs.map(j => j.reporter?.department).filter(Boolean))]
+      .filter(n => !apiSet.has(n))
+    return [...apiNames, ...extra]
+  })()
+
   const filtered = jobs.filter(j => {
+    const lowerSearch = search.toLowerCase()
     const matchSearch = !search ||
-      j.description.toLowerCase().includes(search.toLowerCase()) ||
-      j.request_number.toLowerCase().includes(search.toLowerCase()) ||
-      j.reporter?.full_name?.toLowerCase().includes(search.toLowerCase())
-    const matchDept = deptFilter.size === 0 || deptFilter.has(j.reporter?.department)
+      j.description?.toLowerCase().includes(lowerSearch) ||
+      j.request_number?.toLowerCase().includes(lowerSearch) ||
+      j.reporter?.full_name?.toLowerCase().includes(lowerSearch)
+    // Jobs with no reporter department are always shown (cannot be categorised)
+    const matchDept = deptFilter.size === 0 || !j.reporter?.department || deptFilter.has(j.reporter.department)
     return matchSearch && matchDept
   })
 
@@ -136,16 +149,16 @@ export default function RequestsPage() {
                 />
                 <span className="font-medium">{t('common.all')}</span>
               </label>
-              {departments.length > 0 && <div className="border-t border-gray-100 my-1" />}
-              {departments.map(d => (
-                <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+              {deptOptions.length > 0 && <div className="border-t border-gray-100 my-1" />}
+              {deptOptions.map(name => (
+                <label key={name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
                   <input
                     type="checkbox"
                     className="w-4 h-4 rounded accent-blue-600"
-                    checked={deptFilter.has(d.name)}
-                    onChange={() => toggleDept(d.name)}
+                    checked={deptFilter.has(name)}
+                    onChange={() => toggleDept(name)}
                   />
-                  <span>{d.name}</span>
+                  <span>{name}</span>
                 </label>
               ))}
             </div>
