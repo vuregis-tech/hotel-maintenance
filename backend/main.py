@@ -255,7 +255,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Telegram bot import/start failed: {e}")
         _stop_fn = None
+    # Daily summary scheduler
+    scheduler = None
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from .services.notification import send_daily_summary
+        scheduler = AsyncIOScheduler(timezone="UTC")
+        scheduler.add_job(send_daily_summary, CronTrigger(hour=0, minute=0))
+        scheduler.start()
+        logger.info("Daily summary scheduler started ✓")
+    except Exception as e:
+        logger.warning(f"Scheduler start failed: {e}")
+
     yield
+
+    if scheduler and scheduler.running:
+        scheduler.shutdown()
     if _stop_fn:
         try:
             await _stop_fn()
@@ -449,6 +465,43 @@ async def upload_logo(
         db.close()
     return {"url": url}
 
+
+from pydantic import BaseModel as _BaseModel
+from typing import Optional as _Optional
+
+class SLASettings(_BaseModel):
+    normal: _Optional[int] = None       # minutes, None = infinite
+    urgent: _Optional[int] = None
+    very_urgent: _Optional[int] = None
+
+@app.get("/api/admin/sla")
+def get_sla(current_user: User = Depends(require_roles("admin", "supervisor"))):
+    db = SessionLocal()
+    try:
+        result = {}
+        for p in ["normal", "urgent", "very_urgent"]:
+            row = db.query(AppSetting).filter(AppSetting.key == f"sla_{p}").first()
+            result[p] = int(row.value) if row and row.value else None
+        return result
+    finally:
+        db.close()
+
+@app.put("/api/admin/sla")
+def update_sla(data: SLASettings, current_user: User = Depends(require_roles("admin"))):
+    db = SessionLocal()
+    try:
+        for p in ["normal", "urgent", "very_urgent"]:
+            val = getattr(data, p)
+            row = db.query(AppSetting).filter(AppSetting.key == f"sla_{p}").first()
+            new_val = str(val) if val is not None else ""
+            if row:
+                row.value = new_val
+            else:
+                db.add(AppSetting(key=f"sla_{p}", value=new_val))
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
 
 @app.delete("/api/admin/logo")
 def delete_logo(current_user: User = Depends(require_roles("admin"))):

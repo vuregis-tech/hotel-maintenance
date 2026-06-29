@@ -275,3 +275,60 @@ def notify_status_change(request, old_status: str, new_status: str, changed_by,
             text_tech = body_tech + suffix
             # ส่งให้ tech group — ถ้า group นี้อยู่ใน targets แล้ว ก็ส่งอีกครั้งเป็นเวอร์ชัน tag
             _send_bg(s.TELEGRAM_BOT_TOKEN, tech_target, text_tech)
+
+
+def send_daily_summary():
+    """ส่งรายงานประจำวัน — เรียกโดย APScheduler ทุก 00:00 UTC (07:00 BKK)"""
+    from datetime import datetime, timedelta
+    from sqlalchemy import or_
+    s = _get_settings()
+    if not s.TELEGRAM_BOT_TOKEN:
+        return
+    try:
+        from ..database import SessionLocal
+        from ..models import MaintenanceRequest, WorkOrder
+        db = SessionLocal()
+        try:
+            today = datetime.utcnow().date()
+            yesterday_start = datetime(today.year, today.month, today.day) - timedelta(days=1)
+            yesterday_end = datetime(today.year, today.month, today.day)
+            today_str = today.strftime('%Y-%m-%d')
+
+            open_statuses = ['pending', 'assigned', 'in_progress', 'reopened', 'external_tech']
+            open_count = db.query(MaintenanceRequest).filter(
+                MaintenanceRequest.status.in_(open_statuses)).count()
+            urgent_count = db.query(MaintenanceRequest).filter(
+                MaintenanceRequest.status.in_(open_statuses),
+                MaintenanceRequest.priority.in_(['urgent', 'very_urgent'])).count()
+            ooo_count = db.query(WorkOrder).filter(
+                WorkOrder.ooo_room == True,
+                WorkOrder.status.in_(['assigned', 'in_progress', 'external']),
+                or_(WorkOrder.ooo_end_date == None, WorkOrder.ooo_end_date >= today_str)
+            ).count()
+            completed_yesterday = db.query(WorkOrder).filter(
+                WorkOrder.completed_at >= yesterday_start,
+                WorkOrder.completed_at < yesterday_end,
+                WorkOrder.status == 'completed'
+            ).count()
+            external_count = db.query(MaintenanceRequest).filter(
+                MaintenanceRequest.status == 'external_tech').count()
+
+            date_str = today.strftime("%-d %b %Y")
+            text = (
+                f"📊 <b>Morning Briefing — {date_str}</b>\n"
+                f"─────────────────────\n"
+                f"📋 งานค้างทั้งหมด: <b>{open_count}</b> งาน\n"
+                f"🔴 ด่วน/เร่งด่วน: <b>{urgent_count}</b> งาน\n"
+                f"🏨 ห้อง OOO active: <b>{ooo_count}</b> ห้อง\n"
+                f"✅ เสร็จเมื่อวาน: <b>{completed_yesterday}</b> งาน\n"
+                f"🔧 รอช่างภายนอก: <b>{external_count}</b> งาน\n"
+                f"─────────────────────\n"
+                f"🔗 {_app_base_url()}\n."
+            )
+            targets = _targets(s.TELEGRAM_GROUP_ALL)
+            if targets:
+                _send_bg(s.TELEGRAM_BOT_TOKEN, targets, text)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Daily summary error: {e}")

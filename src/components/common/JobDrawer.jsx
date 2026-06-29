@@ -12,7 +12,7 @@ import {
   History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2
 } from 'lucide-react'
 
-function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null }) {
+function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null, techWorkload = {} }) {
   const { t } = useLang()
   const list = technicians.filter(tech => tech.id !== excludeId)
   const onDutyList = list.filter(tech => onDutyTechs.includes(tech.id))
@@ -35,6 +35,7 @@ function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech
       <div className="flex-1 min-w-0">
         <span className="text-sm font-medium text-gray-900">{tech.full_name}</span>
         <span className="text-xs text-gray-500 ml-1">({tech.department})</span>
+        <span className="text-xs text-gray-400 ml-1">· {techWorkload[String(tech.id)] ?? 0} {t('workOrder.activeJobs')}</span>
       </div>
       {onDutyTechs.includes(tech.id) && (
         <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">🟢 On Duty</span>
@@ -212,6 +213,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   const [allUsers, setAllUsers] = useState([])
   const [issueTypes, setIssueTypes] = useState([])
 
+  const [techWorkload, setTechWorkload] = useState({})
   const [modal, setModal] = useState(null)
   const [selectedTech, setSelectedTech] = useState('')
   const [selectedTechs, setSelectedTechs] = useState([])
@@ -239,11 +241,14 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   }, [jobId])
 
   useEffect(() => {
-    if (['assign', 'reassign', 'coassign', 'recall', 'transfer'].includes(modal) && technicians.length === 0) {
-      api.getTechnicians().then(setTechnicians).catch(() => {})
-      api.getOnDutyToday()
-        .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
-        .catch(() => setOnDutyTechs([]))
+    if (['assign', 'reassign', 'coassign', 'recall', 'transfer'].includes(modal)) {
+      if (technicians.length === 0) {
+        api.getTechnicians().then(setTechnicians).catch(() => {})
+        api.getOnDutyToday()
+          .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
+          .catch(() => setOnDutyTechs([]))
+      }
+      api.getTechWorkload().then(setTechWorkload).catch(() => {})
     }
     if (modal === 'complete') {
       setCompleteForm({
@@ -489,7 +494,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   let parsedMaterials = []
   if (wo?.materials_used) { try { parsedMaterials = JSON.parse(wo.materials_used) } catch {} }
 
-  const techListProps = { technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs }
+  const techListProps = { technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, techWorkload }
   const matHeaders = [t('workOrder.materialName'), t('workOrder.qty'), t('workOrder.unit'), t('workOrder.unitCost')]
 
   return (

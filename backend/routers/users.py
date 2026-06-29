@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from typing import List
 from ..database import get_db
-from ..models import User, Department
+from ..models import User, Department, WorkOrder
 from ..schemas import UserCreate, UserUpdate, UserOut
 from ..auth import get_current_user, hash_password, require_roles
 
@@ -40,6 +40,15 @@ def list_ooo_notify_users(db: Session = Depends(get_db), current_user: User = De
         return []
     return db.query(User).filter(
         User.department.in_(dept_names), User.is_active == True).order_by(User.full_name).all()
+
+
+@router.get("/technicians/workload")
+def get_tech_workload(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    rows = (db.query(WorkOrder.technician_id, func.count(WorkOrder.id))
+            .filter(WorkOrder.status.in_(["assigned", "in_progress"]))
+            .group_by(WorkOrder.technician_id)
+            .all())
+    return {str(tech_id): count for tech_id, count in rows}
 
 
 @router.post("", response_model=UserOut)

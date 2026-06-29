@@ -31,31 +31,32 @@ function snapToFuture(now, hour, minute) {
 }
 
 // ── TechCheckList ─────────────────────────────────────
-function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null }) {
+function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null, techWorkload = {} }) {
   const { t } = useLang()
-  const list = technicians.filter(t => t.id !== excludeId)
-  const onDutyList = list.filter(t => onDutyTechs.includes(t.id))
-  const offDutyList = list.filter(t => !onDutyTechs.includes(t.id))
-  const isChecked = (t) => multi
-    ? selectedTechs.includes(String(t.id))
-    : selectedTech === String(t.id)
-  const toggle = (t) => {
+  const list = technicians.filter(tech => tech.id !== excludeId)
+  const onDutyList = list.filter(tech => onDutyTechs.includes(tech.id))
+  const offDutyList = list.filter(tech => !onDutyTechs.includes(tech.id))
+  const isChecked = (tech) => multi
+    ? selectedTechs.includes(String(tech.id))
+    : selectedTech === String(tech.id)
+  const toggle = (tech) => {
     if (multi) {
-      const id = String(t.id)
+      const id = String(tech.id)
       setSelectedTechs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
     } else {
-      setSelectedTech(prev => prev === String(t.id) ? '' : String(t.id))
+      setSelectedTech(prev => prev === String(tech.id) ? '' : String(tech.id))
     }
   }
-  const renderTech = (t) => (
-    <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isChecked(t) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
-      <input type="checkbox" checked={isChecked(t)} onChange={() => toggle(t)}
+  const renderTech = (tech) => (
+    <label key={tech.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isChecked(tech) ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'}`}>
+      <input type="checkbox" checked={isChecked(tech)} onChange={() => toggle(tech)}
         className="w-4 h-4 text-blue-600 rounded" />
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium text-gray-900">{t.full_name}</span>
-        <span className="text-xs text-gray-500 ml-1">({t.department})</span>
+        <span className="text-sm font-medium text-gray-900">{tech.full_name}</span>
+        <span className="text-xs text-gray-500 ml-1">({tech.department})</span>
+        <span className="text-xs text-gray-400 ml-1">· {techWorkload[String(tech.id)] ?? 0} {t('workOrder.activeJobs')}</span>
       </div>
-      {onDutyTechs.includes(t.id) && (
+      {onDutyTechs.includes(tech.id) && (
         <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">🟢 On Duty</span>
       )}
     </label>
@@ -207,6 +208,7 @@ export default function RequestDetailPage() {
 
   const [technicians, setTechnicians] = useState([])
   const [onDutyTechs, setOnDutyTechs] = useState([])
+  const [techWorkload, setTechWorkload] = useState({})
   const [allUsers, setAllUsers] = useState([])
 
   const [modal, setModal] = useState(null)
@@ -238,11 +240,14 @@ export default function RequestDetailPage() {
 
   useEffect(() => { api.getJob(id).then(setJob).finally(() => setLoading(false)) }, [id])
   useEffect(() => {
-    if (['assign','reassign','coassign','recall','transfer'].includes(modal) && technicians.length === 0) {
-      api.getTechnicians().then(setTechnicians).catch(() => {})
-      api.getOnDutyToday()
-        .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
-        .catch(() => setOnDutyTechs([]))
+    if (['assign','reassign','coassign','recall','transfer'].includes(modal)) {
+      if (technicians.length === 0) {
+        api.getTechnicians().then(setTechnicians).catch(() => {})
+        api.getOnDutyToday()
+          .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
+          .catch(() => setOnDutyTechs([]))
+      }
+      api.getTechWorkload().then(setTechWorkload).catch(() => {})
     }
     if (modal === 'complete') {
       setCompleteForm({
@@ -488,7 +493,7 @@ export default function RequestDetailPage() {
     </div>
   )
 
-  const techListProps = { technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs }
+  const techListProps = { technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, techWorkload }
 
   let parsedMaterials = []
   if (wo?.materials_used) {

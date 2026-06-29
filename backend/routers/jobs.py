@@ -669,6 +669,7 @@ def inspect_work(job_id: int, data: InspectionCreate,
         tech_tags = [u for u in ([assigned_tech] + supervisors) if u]
         notify_status_change(result, old_status, "completed", current_user,
                              data.notes,
+                             tag_user=result.reporter,
                              title="✅ <b>COMPLETED</b>",
                              tech_tag_users=tech_tags)  # 🔔
     else:
