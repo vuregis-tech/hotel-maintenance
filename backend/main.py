@@ -8,7 +8,7 @@ import os
 
 from .database import Base, engine
 from .models import User, MainArea, SubArea, IssueType, RepairLog, Department, AppSetting
-from .auth import hash_password, require_roles
+from .auth import hash_password, require_roles, get_current_user
 from fastapi import Depends, HTTPException, UploadFile, File
 from .database import SessionLocal
 from .config import get_settings
@@ -475,7 +475,7 @@ class SLASettings(_BaseModel):
     very_urgent: _Optional[int] = None
 
 @app.get("/api/admin/sla")
-def get_sla(current_user: User = Depends(require_roles("admin", "supervisor"))):
+def get_sla(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         result = {}

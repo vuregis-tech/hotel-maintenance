@@ -742,6 +742,7 @@ function StorageStatusBanner() {
 function SLASection() {
   const { t } = useLang()
   const [saving, setSaving] = useState(false)
+  const [slaLoading, setSlaLoading] = useState(true)
   const [slaForm, setSlaForm] = useState({
     normal:     { infinite: true,  hours: 0, mins: 0 },
     urgent:     { infinite: true,  hours: 0, mins: 0 },
@@ -758,7 +759,8 @@ function SLASection() {
         urgent:      toForm(data.urgent),
         very_urgent: toForm(data.very_urgent),
       })
-    }).catch(() => {})
+      setSlaLoading(false)
+    }).catch(err => toast.error(err.message))
   }, [])
 
   async function handleSave() {
@@ -816,7 +818,7 @@ function SLASection() {
         })}
       </div>
       <div className="mt-4 flex justify-end">
-        <button onClick={handleSave} disabled={saving}
+        <button onClick={handleSave} disabled={saving || slaLoading}
           className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
           {saving ? t('common.saving') : t('common.save')}
         </button>

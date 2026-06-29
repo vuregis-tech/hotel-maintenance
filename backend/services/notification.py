@@ -289,9 +289,11 @@ def send_daily_summary():
         from ..models import MaintenanceRequest, WorkOrder
         db = SessionLocal()
         try:
-            today = datetime.utcnow().date()
-            yesterday_start = datetime(today.year, today.month, today.day) - timedelta(days=1)
-            yesterday_end = datetime(today.year, today.month, today.day)
+            from datetime import timezone as _tz
+            now_utc = datetime.now(tz=_tz.utc)
+            today = now_utc.date()
+            yesterday_start = datetime(today.year, today.month, today.day, tzinfo=_tz.utc) - timedelta(days=1)
+            yesterday_end = datetime(today.year, today.month, today.day, tzinfo=_tz.utc)
             today_str = today.strftime('%Y-%m-%d')
 
             open_statuses = ['pending', 'assigned', 'in_progress', 'reopened', 'external_tech']
@@ -300,11 +302,12 @@ def send_daily_summary():
             urgent_count = db.query(MaintenanceRequest).filter(
                 MaintenanceRequest.status.in_(open_statuses),
                 MaintenanceRequest.priority.in_(['urgent', 'very_urgent'])).count()
-            ooo_count = db.query(WorkOrder).filter(
-                WorkOrder.ooo_room == True,
-                WorkOrder.status.in_(['assigned', 'in_progress', 'external']),
-                or_(WorkOrder.ooo_end_date == None, WorkOrder.ooo_end_date >= today_str)
-            ).count()
+            ooo_count = (db.query(WorkOrder.request_id)
+                         .filter(
+                             WorkOrder.ooo_room == True,
+                             WorkOrder.status.in_(['assigned', 'in_progress', 'external']),
+                             or_(WorkOrder.ooo_end_date == None, WorkOrder.ooo_end_date >= today_str))
+                         .distinct().count())
             completed_yesterday = db.query(WorkOrder).filter(
                 WorkOrder.completed_at >= yesterday_start,
                 WorkOrder.completed_at < yesterday_end,
