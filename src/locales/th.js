@@ -176,6 +176,8 @@ export default {
     techTag: 'ช่าง',
     itemsCount: 'รายการ',
     clearTime: 'ล้างเวลา',
+    filterDept: 'แผนก',
+    allDepts: 'ทุกแผนก',
   },
   workOrder: {
     assign: 'จ่ายงาน',

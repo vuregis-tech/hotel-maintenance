@@ -118,7 +118,7 @@ def notify_new_request(request, reporter, supervisors=None, on_duty_techs=None):
         f"📍 <b>พื้นที่:</b> {_location(request)}\n"
         f"🔧 <b>ประเภท:</b> {issue}\n"
         f"📝 <b>รายละเอียด:</b> {request.description}\n"
-        f"👤 <b>ผู้แจ้ง:</b> {_mention(reporter)} ({reporter.department})\n"
+        f"👤 <b>ผู้แจ้ง:</b> {_mention(reporter)} ({reporter.department or '-'})\n"
         f"─────────────────────\n"
         f"⏰ สถานะ: {STATUS_TH['pending']}\n"
     )

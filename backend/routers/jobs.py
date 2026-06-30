@@ -67,10 +67,13 @@ def list_requests(
 ):
     q = db.query(MaintenanceRequest)
     if current_user.role == "staff":
-        # เห็นงานทุกคนในแผนกเดียวกัน
-        ReporterAlias = aliased(User)
-        q = (q.join(ReporterAlias, MaintenanceRequest.reporter_id == ReporterAlias.id)
-               .filter(ReporterAlias.department == current_user.department))
+        # เห็นงานทุกคนในแผนกเดียวกัน — ถ้าไม่มีแผนก (ถูก clear หลัง dept soft-delete) เห็นแค่งานตัวเอง
+        if current_user.department:
+            ReporterAlias = aliased(User)
+            q = (q.join(ReporterAlias, MaintenanceRequest.reporter_id == ReporterAlias.id)
+                   .filter(ReporterAlias.department == current_user.department))
+        else:
+            q = q.filter(MaintenanceRequest.reporter_id == current_user.id)
     elif current_user.role == "technician":
         assigned_ids = (db.query(WorkOrder.request_id)
                         .filter(WorkOrder.technician_id == current_user.id).subquery())

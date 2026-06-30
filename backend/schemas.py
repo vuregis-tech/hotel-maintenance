@@ -51,7 +51,7 @@ class UserOut(BaseModel):
     id: int
     username: str
     full_name: str
-    department: str
+    department: Optional[str] = None
     position: str
     role: str
     is_active: bool

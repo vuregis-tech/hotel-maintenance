@@ -107,7 +107,7 @@ export default function Layout({ children }) {
           <div className="flex items-start justify-between gap-1">
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 text-sm truncate">{user?.full_name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{user?.position} · {user?.department}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{user?.position}{user?.department ? ` · ${user.department}` : ''}</p>
             </div>
             <button onClick={() => setShowChangePw(true)}
               title={t('auth.changePassword')}

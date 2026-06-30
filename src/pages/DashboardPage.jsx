@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import { api } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare } from 'lucide-react'
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare } from 'lucide-react'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 
@@ -26,7 +26,7 @@ const FILTER_MATCH = {
   urgent:         j => j.is_urgent && !['completed','cancelled'].includes(j.status),
   external:       j => j.status === 'external_tech',
   ooo:            jobHasActiveOoo,
-  completedToday: j => true, // handled by separate list
+  completedToday: j => true,
 }
 
 function StatCard({ label, value, icon: Icon, color, active, onClick }) {
@@ -58,20 +58,57 @@ export default function DashboardPage() {
   const [activeFilter, setActiveFilter] = useState(null)
   const dateLocale = lang === 'th' ? thLocale : enUS
 
+  // Department filter
+  const [departments, setDepartments] = useState([])
+  const [deptFilter, setDeptFilter] = useState(new Set())
+  const [deptOpen, setDeptOpen] = useState(false)
+  const deptRef = useRef(null)
+
   useEffect(() => {
-    api.getJobs({ limit: 100 }).then(setJobs).finally(() => setLoading(false))
+    api.getJobs({ limit: 1000 }).then(setJobs).finally(() => setLoading(false))
     api.getCompletedToday().then(setCompletedToday).catch(() => setCompletedToday([]))
+    api.getDepartments().then(setDepartments).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    function handler(e) {
+      if (deptRef.current && !deptRef.current.contains(e.target)) setDeptOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function toggleDept(name) {
+    setDeptFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  // Merge active API depts + soft-deleted dept names still present in job data
+  const deptOptions = (() => {
+    const apiNames = departments.map(d => d.name)
+    const apiSet = new Set(apiNames)
+    const extra = [...new Set(jobs.map(j => j.reporter?.department).filter(Boolean))].filter(n => !apiSet.has(n))
+    return [...apiNames, ...extra]
+  })()
+
+  // Apply dept filter — jobs with no reporter dept always shown
+  const matchDept = j => deptFilter.size === 0 || !j.reporter?.department || deptFilter.has(j.reporter.department)
+  const filteredJobs = jobs.filter(matchDept)
+  const filteredToday = completedToday.filter(matchDept)
+
   const counts = {
-    pending:        jobs.filter(FILTER_MATCH.pending).length,
-    inProgress:     jobs.filter(FILTER_MATCH.inProgress).length,
-    inspection:     jobs.filter(FILTER_MATCH.inspection).length,
-    veryUrgent:     jobs.filter(FILTER_MATCH.veryUrgent).length,
-    urgent:         jobs.filter(FILTER_MATCH.urgent).length,
-    external:       jobs.filter(FILTER_MATCH.external).length,
-    ooo:            jobs.filter(jobHasActiveOoo).length,
-    completedToday: completedToday.length,
+    pending:        filteredJobs.filter(FILTER_MATCH.pending).length,
+    inProgress:     filteredJobs.filter(FILTER_MATCH.inProgress).length,
+    inspection:     filteredJobs.filter(FILTER_MATCH.inspection).length,
+    veryUrgent:     filteredJobs.filter(FILTER_MATCH.veryUrgent).length,
+    urgent:         filteredJobs.filter(FILTER_MATCH.urgent).length,
+    external:       filteredJobs.filter(FILTER_MATCH.external).length,
+    ooo:            filteredJobs.filter(jobHasActiveOoo).length,
+    completedToday: filteredToday.length,
   }
 
   const filterLabelKey = {
@@ -82,10 +119,10 @@ export default function DashboardPage() {
   }
 
   const displayedJobs = activeFilter === 'completedToday'
-    ? completedToday
+    ? filteredToday
     : activeFilter
-      ? jobs.filter(FILTER_MATCH[activeFilter])
-      : jobs.slice(0, 8)
+      ? filteredJobs.filter(FILTER_MATCH[activeFilter])
+      : filteredJobs.slice(0, 8)
 
   function toggleFilter(key) {
     setActiveFilter(prev => prev === key ? null : key)
@@ -102,20 +139,59 @@ export default function DashboardPage() {
     { key: 'ooo',            labelKey: 'dashboard.stats.ooo',            value: counts.ooo,            icon: DoorClosed,    color: 'bg-gray-100 text-gray-600' },
   ]
 
+  const deptLabel = deptFilter.size === 0
+    ? t('request.allDepts')
+    : `${t('request.filterDept')} (${deptFilter.size})`
+
   return (
     <>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-xl font-bold text-gray-900">{t('dashboard.title')}</h1>
             <p className="text-sm text-gray-500 mt-0.5">{t('dashboard.greeting')}, {user?.full_name}</p>
           </div>
-          <Link to="/new-request"
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            <Plus className="w-4 h-4" />
-            {t('dashboard.addRequest')}
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* Department filter */}
+            <div ref={deptRef} className="relative">
+              <button
+                onClick={() => setDeptOpen(v => !v)}
+                className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm focus:outline-none whitespace-nowrap ${
+                  deptFilter.size > 0
+                    ? 'border-blue-400 bg-blue-50 text-blue-700 font-medium'
+                    : 'border-gray-300 text-gray-700 bg-white'
+                }`}>
+                {deptLabel}
+                <ChevronDown className={`w-4 h-4 transition-transform ${deptOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {deptOpen && (
+                <div className="absolute z-20 top-full mt-1 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[180px] max-h-64 overflow-y-auto">
+                  <label className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                    <input type="checkbox" className="w-4 h-4 rounded accent-blue-600"
+                      checked={deptFilter.size === 0}
+                      onChange={() => setDeptFilter(new Set())} />
+                    <span className="font-medium">{t('common.all')}</span>
+                  </label>
+                  {deptOptions.length > 0 && <div className="border-t border-gray-100 my-1" />}
+                  {deptOptions.map(name => (
+                    <label key={name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                      <input type="checkbox" className="w-4 h-4 rounded accent-blue-600"
+                        checked={deptFilter.has(name)}
+                        onChange={() => toggleDept(name)} />
+                      <span>{name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Link to="/new-request"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              <Plus className="w-4 h-4" />
+              {t('dashboard.addRequest')}
+            </Link>
+          </div>
         </div>
 
         {/* Stat Cards */}

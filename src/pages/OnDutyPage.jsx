@@ -28,7 +28,7 @@ function TechCheckBox({ technicians, alreadyOnDuty, selectedTechs, setSelectedTe
               className="w-4 h-4 text-blue-600 rounded flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <span className="text-sm font-medium text-gray-900">{tech.full_name}</span>
-              <span className="text-xs text-gray-500 ml-1.5">({tech.department})</span>
+              {tech.department && <span className="text-xs text-gray-500 ml-1.5">({tech.department})</span>}
             </div>
           </label>
         )
