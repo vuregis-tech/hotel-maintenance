@@ -23,7 +23,7 @@ const FILTER_MATCH = {
   inProgress:     j => ['assigned', 'in_progress'].includes(j.status),
   inspection:     j => j.status === 'pending_inspection',
   veryUrgent:     j => j.priority === 'very_urgent' && !['completed','cancelled'].includes(j.status),
-  urgent:         j => j.is_urgent && !['completed','cancelled'].includes(j.status),
+  urgent:         j => j.is_urgent && j.priority !== 'very_urgent' && !['completed','cancelled'].includes(j.status),
   external:       j => j.status === 'external_tech',
   ooo:            jobHasActiveOoo,
   completedToday: j => true,
