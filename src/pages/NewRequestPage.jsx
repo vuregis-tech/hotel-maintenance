@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
-import { api, schedToISO } from '../lib/api'
+import { api, schedToISO, isVideoUrl } from '../lib/api'
 import toast from 'react-hot-toast'
-import { X, Users, MapPin, Wrench, FileText, Camera, Image as ImageIcon } from 'lucide-react'
+import { X, Users, MapPin, Wrench, FileText, Camera, Image as ImageIcon, Video } from 'lucide-react'
 
 const SCHED_MINUTES = ['00', '15', '30', '45']
 const SCHED_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
@@ -36,6 +36,167 @@ function Section({ icon: Icon, title, children }) {
   )
 }
 
+function CameraRecorder({ onSave, onClose }) {
+  const [phase, setPhase] = useState('init') // init | live | recording | preview | error
+  const [errorMsg, setErrorMsg] = useState('')
+  const streamRef = useRef(null)
+  const recorderRef = useRef(null)
+  const mimeTypeRef = useRef('video/webm')
+  const chunksRef = useRef([])
+  const previewUrlRef = useRef(null)
+  const liveRef = useRef(null)
+  const previewRef = useRef(null)
+
+  useEffect(() => {
+    let alive = true
+    async function init() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        if (alive) { setErrorMsg('เบราว์เซอร์ไม่รองรับการบันทึกจากกล้อง'); setPhase('error') }
+        return
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true })
+        if (!alive) { stream.getTracks().forEach(t => t.stop()); return }
+        streamRef.current = stream
+        setPhase('live')
+      } catch (e) {
+        if (!alive) return
+        const msg = e.name === 'NotAllowedError' ? 'ไม่ได้รับอนุญาตให้เข้าถึงกล้อง' : 'ไม่สามารถเข้าถึงกล้องได้'
+        setErrorMsg(msg); setPhase('error')
+      }
+    }
+    init()
+    return () => {
+      alive = false
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (phase === 'live' && liveRef.current && streamRef.current) {
+      liveRef.current.srcObject = streamRef.current
+    }
+  }, [phase])
+
+  function startRecord() {
+    const stream = streamRef.current
+    if (!stream) return
+    const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      .find(t => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } }) || ''
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+    mimeTypeRef.current = recorder.mimeType || mimeType || 'video/webm'
+    chunksRef.current = []
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
+      previewUrlRef.current = URL.createObjectURL(blob)
+      if (previewRef.current) previewRef.current.src = previewUrlRef.current
+      setPhase('preview')
+    }
+    recorder.start(100)
+    recorderRef.current = recorder
+    setPhase('recording')
+  }
+
+  function stopRecord() {
+    recorderRef.current?.stop()
+    recorderRef.current = null
+  }
+
+  function retry() {
+    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null }
+    chunksRef.current = []
+    setPhase('live')
+  }
+
+  function save() {
+    if (!previewUrlRef.current || chunksRef.current.length === 0) return
+    const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current })
+    const ext = mimeTypeRef.current.includes('mp4') ? '.mp4' : '.webm'
+    const file = new File([blob], `video-${Date.now()}${ext}`, { type: blob.type })
+    const url = previewUrlRef.current
+    previewUrlRef.current = null // ownership transferred to parent
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    onSave(file, url)
+  }
+
+  function close() {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null }
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <span className="text-white font-medium text-sm">บันทึกวีดิโอ</span>
+        <button onClick={close} className="text-white/60 hover:text-white transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 relative bg-black overflow-hidden">
+        {(phase === 'init' || phase === 'error') && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
+            {phase === 'init' && <p className="text-white/50 text-sm">กำลังเปิดกล้อง...</p>}
+            {phase === 'error' && <p className="text-red-400 text-sm">{errorMsg}</p>}
+          </div>
+        )}
+        <video ref={liveRef} autoPlay playsInline muted
+          className={`absolute inset-0 w-full h-full object-cover ${phase === 'preview' || phase === 'init' || phase === 'error' ? 'invisible' : ''}`} />
+        <video ref={previewRef} controls playsInline
+          className={`absolute inset-0 w-full h-full object-contain bg-black ${phase !== 'preview' ? 'hidden' : ''}`} />
+        {phase === 'recording' && (
+          <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-full">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-white text-xs font-medium">กำลังบันทึก...</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-6 shrink-0">
+        {phase === 'live' && (
+          <div className="flex justify-center">
+            <button onClick={startRecord}
+              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-colors">
+              <div className="w-5 h-5 rounded-full bg-white" />
+            </button>
+          </div>
+        )}
+        {phase === 'recording' && (
+          <div className="flex justify-center">
+            <button onClick={stopRecord}
+              className="w-16 h-16 rounded-full bg-white/20 hover:bg-white/30 border-2 border-white flex items-center justify-center shadow-lg transition-colors">
+              <div className="w-6 h-6 rounded-sm bg-red-500" />
+            </button>
+          </div>
+        )}
+        {phase === 'preview' && (
+          <div className="flex gap-3">
+            <button onClick={retry}
+              className="flex-1 border border-white/30 text-white py-3 rounded-xl text-sm hover:bg-white/10 transition-colors">
+              ลองใหม่
+            </button>
+            <button onClick={save}
+              className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl text-sm font-medium transition-colors">
+              ใช้วีดิโอนี้
+            </button>
+          </div>
+        )}
+        {phase === 'error' && (
+          <button onClick={close}
+            className="w-full border border-white/30 text-white py-3 rounded-xl text-sm hover:bg-white/10">
+            ปิด
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function NewRequestPage() {
   const { user } = useAuth()
   const { lang, t } = useLang()
@@ -56,7 +217,8 @@ export default function NewRequestPage() {
     sched_hour: '08',
     sched_minute: '00',
   })
-  const [images, setImages] = useState([])
+  const [media, setMedia] = useState([]) // [{file, preview, isVideo}]
+  const [showRecorder, setShowRecorder] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -96,15 +258,28 @@ export default function NewRequestPage() {
     setForm(f => ({ ...f, main_area_id: val, sub_area_id: '', other_location: '' }))
   }
 
-  function handleImageAdd(e) {
+  function handleMediaAdd(e) {
     const files = Array.from(e.target.files)
     e.target.value = ''
-    const newImages = files.map(f => ({ file: f, preview: URL.createObjectURL(f) }))
-    setImages(prev => [...prev, ...newImages])
+    const toAdd = []
+    for (const f of files) {
+      const isVideo = f.type.startsWith('video/') || isVideoUrl(f.name)
+      if (isVideo && f.size > 100 * 1024 * 1024) {
+        toast.error(`วีดิโอ "${f.name}" ใหญ่เกินไป (สูงสุด 100MB)`)
+        continue
+      }
+      toAdd.push({ file: f, preview: URL.createObjectURL(f), isVideo })
+    }
+    setMedia(prev => [...prev, ...toAdd])
   }
 
-  function removeImage(idx) {
-    setImages(prev => {
+  function handleRecordedVideo(file, url) {
+    setShowRecorder(false)
+    setMedia(prev => [...prev, { file, preview: url, isVideo: true }])
+  }
+
+  function removeMedia(idx) {
+    setMedia(prev => {
       URL.revokeObjectURL(prev[idx].preview)
       return prev.filter((_, i) => i !== idx)
     })
@@ -130,11 +305,13 @@ export default function NewRequestPage() {
         description: form.description,
       }
       const job = await api.createJob(payload)
-      const uploadResults = await Promise.allSettled(images.map(img => api.uploadImage(job.id, img.file)))
+      const uploadResults = await Promise.allSettled(
+        media.map(item => item.isVideo ? api.uploadVideo(job.id, item.file) : api.uploadImage(job.id, item.file))
+      )
       const failed = uploadResults.filter(r => r.status === 'rejected')
       if (failed.length > 0) {
         const reason = failed[0].reason?.message || 'ไม่ทราบสาเหตุ'
-        toast.error(`อัปโหลดรูปล้มเหลว: ${reason}`, { duration: 6000 })
+        toast.error(`อัปโหลดไฟล์ล้มเหลว: ${reason}`, { duration: 6000 })
       }
       toast.success(t('request.submitSuccess'))
       navigate(`/requests/${job.id}`)
@@ -281,15 +458,24 @@ export default function NewRequestPage() {
           </div>
         </Section>
 
-        {/* Photos */}
-        <Section icon={FileText} title={t('request.photoSection')}>
+        {/* Photos & Videos */}
+        <Section icon={FileText} title={lang === 'th' ? 'รูปภาพ / วีดิโอ' : 'Photos & Videos'}>
           <div className="space-y-3">
-            {images.length > 0 && (
+            {media.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
-                {images.map((img, idx) => (
+                {media.map((item, idx) => (
                   <div key={idx} className="relative aspect-square">
-                    <img src={img.preview} alt="" className="w-full h-full object-cover rounded-lg" />
-                    <button type="button" onClick={() => removeImage(idx)}
+                    {item.isVideo ? (
+                      <video src={item.preview} className="w-full h-full object-cover rounded-lg" muted playsInline />
+                    ) : (
+                      <img src={item.preview} alt="" className="w-full h-full object-cover rounded-lg" />
+                    )}
+                    {item.isVideo && (
+                      <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-white text-[10px] font-medium flex items-center gap-0.5">
+                        <Video className="w-2.5 h-2.5" /> VDO
+                      </div>
+                    )}
+                    <button type="button" onClick={() => removeMedia(idx)}
                       className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80">
                       <X className="w-3 h-3" />
                     </button>
@@ -298,25 +484,29 @@ export default function NewRequestPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-blue-300 rounded-xl py-4 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
-                <Camera className="w-6 h-6 text-blue-500" />
-                <span className="text-sm font-medium text-blue-600">{t('request.takePhoto')}</span>
-                <span className="text-xs text-gray-400">{t('request.openCamera')}</span>
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageAdd} />
+            <div className="grid grid-cols-3 gap-2">
+              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-blue-300 rounded-xl py-3 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                <Camera className="w-5 h-5 text-blue-500" />
+                <span className="text-xs font-medium text-blue-600 text-center">{t('request.takePhoto')}</span>
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleMediaAdd} />
               </label>
 
-              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 rounded-xl py-4 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
-                <ImageIcon className="w-6 h-6 text-gray-400" />
-                <span className="text-sm font-medium text-gray-600">{t('request.selectPhotoLabel')}</span>
-                <span className="text-xs text-gray-400">{t('request.fromGallery')}</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageAdd} />
+              <button type="button" onClick={() => setShowRecorder(true)}
+                className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-red-300 rounded-xl py-3 cursor-pointer hover:border-red-500 hover:bg-red-50 transition-colors">
+                <Video className="w-5 h-5 text-red-500" />
+                <span className="text-xs font-medium text-red-600 text-center">{lang === 'th' ? 'บันทึกวีดิโอ' : 'Record Video'}</span>
+              </button>
+
+              <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-300 rounded-xl py-3 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
+                <ImageIcon className="w-5 h-5 text-gray-400" />
+                <span className="text-xs font-medium text-gray-600 text-center">{lang === 'th' ? 'เลือกรูป/วีดิโอ' : 'Select Files'}</span>
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaAdd} />
               </label>
             </div>
 
-            {images.length > 0 && (
+            {media.length > 0 && (
               <p className="text-xs text-gray-400 text-center">
-                {images.length} {lang === 'th' ? 'รูป · กดรูปเพื่อลบ' : 'photo(s) · tap to remove'}
+                {media.length} {lang === 'th' ? 'ไฟล์ · กด ✕ เพื่อลบ' : 'file(s) · tap ✕ to remove'}
               </p>
             )}
           </div>
@@ -333,6 +523,13 @@ export default function NewRequestPage() {
           </button>
         </div>
       </form>
+
+      {showRecorder && (
+        <CameraRecorder
+          onSave={handleRecordedVideo}
+          onClose={() => setShowRecorder(false)}
+        />
+      )}
     </div>
   )
 }

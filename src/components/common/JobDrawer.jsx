@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, imgUrl, schedToISO } from '../../lib/api'
+import { api, imgUrl, schedToISO, isVideoUrl } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LangContext'
 import StatusBadge from './StatusBadge'
@@ -9,7 +9,7 @@ import { format, parseISO } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 import {
   X, Wrench, CheckCircle, XCircle, Plus, Trash2, Package,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2, Video, Camera, Image as ImageIcon
 } from 'lucide-react'
 
 function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null, techWorkload = {} }) {
@@ -63,8 +63,21 @@ function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech
   )
 }
 
-function SafeImage({ src, className }) {
+function SafeMedia({ src, className }) {
   const [broken, setBroken] = useState(false)
+  if (!src) return (
+    <div className={`${className} flex items-center justify-center bg-gray-100`}>
+      <ImageOff className="w-5 h-5 text-gray-300" />
+    </div>
+  )
+  if (isVideoUrl(src)) return (
+    <div className={`${className} relative bg-black overflow-hidden`}>
+      <video src={src} className="w-full h-full object-cover" muted playsInline />
+      <div className="absolute bottom-1 left-1 bg-black/60 px-1 py-0.5 rounded text-white text-[9px] font-medium flex items-center gap-0.5">
+        <Video className="w-2 h-2" /> VDO
+      </div>
+    </div>
+  )
   if (broken) return (
     <div className={`${className} flex items-center justify-center bg-gray-100`}>
       <ImageOff className="w-5 h-5 text-gray-300" />
@@ -226,6 +239,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     is_external: false, external_note: '', is_complete: false
   })
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
+  const [inspectMedia, setInspectMedia] = useState([]) // [{file, preview, isVideo}]
   const [editForm, setEditForm] = useState({
     description: '', issue_type_id: '', priority: 'normal',
     sched_date: '', sched_hour: '08', sched_minute: '00',
@@ -384,13 +398,52 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setEditForm(f => ({ ...f, sched_hour: hour, sched_minute: minute }))
   }
 
+  function handleInspectMediaAdd(e) {
+    const files = Array.from(e.target.files)
+    e.target.value = ''
+    const toAdd = []
+    for (const f of files) {
+      const isVideo = f.type.startsWith('video/') || isVideoUrl(f.name)
+      if (isVideo && f.size > 100 * 1024 * 1024) { toast.error(`วีดิโอ "${f.name}" ใหญ่เกินไป (สูงสุด 100MB)`); continue }
+      toAdd.push({ file: f, preview: URL.createObjectURL(f), isVideo })
+    }
+    setInspectMedia(prev => [...prev, ...toAdd])
+  }
+
+  function removeInspectMedia(idx) {
+    setInspectMedia(prev => {
+      URL.revokeObjectURL(prev[idx].preview)
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
+
   async function handleInspect() {
     if (inspectForm.result === 'fail' && !inspectForm.notes.trim())
       return toast.error(t('workOrder.toast.inspectNoteRequired'))
     setActing(true)
     try {
       const updated = await api.inspectJob(job.id, inspectForm)
-      setJob(updated); setModal(null)
+      if (inspectMedia.length > 0) {
+        const newInspection = updated.inspections?.slice(-1)[0]
+        if (newInspection?.id) {
+          await Promise.allSettled(
+            inspectMedia.map(item =>
+              item.isVideo
+                ? api.uploadInspectVideo(job.id, newInspection.id, item.file)
+                : api.uploadInspectImage(job.id, newInspection.id, item.file)
+            )
+          )
+          const final = await api.getJob(job.id)
+          setJob(final)
+        } else {
+          setJob(updated)
+        }
+        inspectMedia.forEach(item => URL.revokeObjectURL(item.preview))
+        setInspectMedia([])
+      } else {
+        setJob(updated)
+      }
+      setModal(null)
       toast.success(inspectForm.result === 'pass' ? t('workOrder.toast.inspectPassSuccess') : t('workOrder.toast.inspectFailSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -652,13 +705,13 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                 </div>
                 {job.images?.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-sm text-gray-500 mb-2">{t('workOrder.photosLabel')}</p>
+                    <p className="text-sm text-gray-500 mb-2">{lang === 'th' ? 'รูปภาพ / วีดิโอ' : 'Photos & Videos'}</p>
                     <div className="grid grid-cols-4 gap-2">
                       {job.images.map(img => (
                         <a key={img.id} href={imgUrl(img.filename)} target="_blank" rel="noopener noreferrer"
-                          className="block rounded-lg overflow-hidden">
-                          <SafeImage src={imgUrl(img.filename)}
-                            className="w-full aspect-square object-cover hover:opacity-90 rounded-lg" />
+                          className="block rounded-lg overflow-hidden aspect-square">
+                          <SafeMedia src={imgUrl(img.filename)}
+                            className="w-full h-full object-cover hover:opacity-90 rounded-lg" />
                         </a>
                       ))}
                     </div>
@@ -771,6 +824,20 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                     {latestInspection.notes && <InfoRow label={t('workOrder.notesLabel')} value={latestInspection.notes} pre />}
                     <InfoRow label={t('workOrder.inspectedAt')} value={format(new Date(latestInspection.created_at), 'd MMM yyyy HH:mm', { locale: dateLocale })} />
                   </div>
+                  {latestInspection.images?.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-500 mb-2">{lang === 'th' ? 'รูปภาพ / วีดิโอ' : 'Photos & Videos'}</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {latestInspection.images.map(img => (
+                          <a key={img.id} href={imgUrl(img.filename)} target="_blank" rel="noopener noreferrer"
+                            className="block rounded-lg overflow-hidden aspect-square">
+                            <SafeMedia src={imgUrl(img.filename)}
+                              className="w-full h-full object-cover hover:opacity-90 rounded-lg" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </Section>
               )}
 
@@ -960,7 +1027,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       )}
 
       {modal === 'inspect' && (
-        <InnerModal title={t('workOrder.inspectModal')} onClose={() => setModal(null)}>
+        <InnerModal title={t('workOrder.inspectModal')} onClose={() => { setModal(null); inspectMedia.forEach(m => URL.revokeObjectURL(m.preview)); setInspectMedia([]) }}>
           <div className="space-y-3">
             <div className="flex gap-3">
               {[['pass', t('workOrder.inspectPass'), 'bg-green-600'], ['fail', t('workOrder.inspectFail'), 'bg-red-600']].map(([val, label, bg]) => (
@@ -983,9 +1050,43 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
             {inspectForm.result === 'fail' && (
               <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{t('workOrder.inspectWarnMsg')}</p>
             )}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                {lang === 'th' ? 'แนบรูป/วีดิโอ (ไม่บังคับ)' : 'Attach Photo/Video (optional)'}
+              </label>
+              {inspectMedia.length > 0 && (
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {inspectMedia.map((item, idx) => (
+                    <div key={idx} className="relative aspect-square">
+                      {item.isVideo
+                        ? <video src={item.preview} className="w-full h-full object-cover rounded-lg" muted playsInline />
+                        : <img src={item.preview} alt="" className="w-full h-full object-cover rounded-lg" />
+                      }
+                      {item.isVideo && (
+                        <div className="absolute bottom-0.5 left-0.5 bg-black/60 px-1 py-0.5 rounded text-white text-[8px] flex items-center gap-0.5">
+                          <Video className="w-2 h-2" /> VDO
+                        </div>
+                      )}
+                      <button type="button" onClick={() => removeInspectMedia(idx)}
+                        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-2.5 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
+                <ImageIcon className="w-4 h-4 text-gray-400" />
+                <span className="text-xs font-medium text-gray-500">
+                  {lang === 'th' ? 'เลือกรูป/วีดิโอ' : 'Select Files'}
+                </span>
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleInspectMediaAdd} />
+              </label>
+            </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">{t('common.cancel')}</button>
+            <button onClick={() => { setModal(null); inspectMedia.forEach(m => URL.revokeObjectURL(m.preview)); setInspectMedia([]) }}
+              className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">{t('common.cancel')}</button>
             <button onClick={handleInspect} disabled={acting}
               className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
               {acting ? t('common.saving') : t('common.confirm')}

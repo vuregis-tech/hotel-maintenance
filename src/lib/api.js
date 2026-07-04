@@ -19,6 +19,12 @@ export function imgUrl(filename) {
   return `/uploads/${filename}`                             // legacy filename
 }
 
+export function isVideoUrl(url) {
+  if (!url) return false
+  const u = url.toLowerCase()
+  return u.includes('/video/upload/') || /\.(mp4|mov|webm|m4v|avi)(\?|$)/.test(u)
+}
+
 function getToken() {
   return localStorage.getItem('token')
 }
@@ -90,6 +96,23 @@ export const api = {
     const fd = new FormData()
     fd.append('file', file)
     return request('POST', `/api/jobs/${id}/images`, fd, true)
+  },
+  uploadVideo: (id, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request('POST', `/api/jobs/${id}/videos`, fd, true)
+  },
+  uploadInspectImage: (id, inspectionId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('inspection_id', String(inspectionId))
+    return request('POST', `/api/jobs/${id}/inspect-images`, fd, true)
+  },
+  uploadInspectVideo: (id, inspectionId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('inspection_id', String(inspectionId))
+    return request('POST', `/api/jobs/${id}/inspect-videos`, fd, true)
   },
   assignJob: (id, technicianId) => request('POST', `/api/jobs/${id}/assign`, { technician_id: technicianId }),
   acceptJob: (id) => request('POST', `/api/jobs/${id}/accept`),

@@ -80,6 +80,46 @@ def upload_image(file_bytes: bytes, folder: str = "hotel-maintenance") -> str:
     return f"/uploads/{filename}"
 
 
+def upload_video(file_bytes: bytes, folder: str = "hotel-maintenance", extension: str = ".mp4") -> str:
+    """
+    อัปโหลดวิดีโอ → คืน URL ที่เข้าถึงได้
+    - Cloudinary: resource_type="video"
+    - local dev: บันทึก uploads/ ด้วย extension ที่ถูกต้อง
+    """
+    _configure()
+
+    if _configured:
+        try:
+            result = cloudinary.uploader.upload(
+                file_bytes,
+                folder=folder,
+                resource_type="video",
+            )
+            url = result["secure_url"]
+            logger.info(f"Video uploaded to Cloudinary: {url}")
+            return url
+        except Exception as e:
+            logger.error(f"Cloudinary video upload failed: {e}")
+            raise RuntimeError(f"อัปโหลดวิดีโอล้มเหลว: {e}")
+
+    if _is_railway():
+        raise RuntimeError(
+            "ไม่สามารถบันทึกวิดีโอได้ — กรุณาตั้งค่า CLOUDINARY_CLOUD_NAME, "
+            "CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET ใน Railway environment variables"
+        )
+
+    # Local dev fallback only
+    import uuid
+    os.makedirs("uploads", exist_ok=True)
+    ext = extension if extension.startswith('.') else f'.{extension}'
+    filename = f"{uuid.uuid4().hex}{ext}"
+    path = os.path.join("uploads", filename)
+    with open(path, "wb") as f:
+        f.write(file_bytes)
+    logger.info(f"Video saved locally: {path}")
+    return f"/uploads/{filename}"
+
+
 def get_image_url(stored: str) -> str:
     """แปลง stored value → URL ที่แสดงใน browser"""
     if stored.startswith("http"):

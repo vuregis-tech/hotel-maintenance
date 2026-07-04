@@ -13,7 +13,7 @@ from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, 
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
-from ..services.storage import upload_image as storage_upload
+from ..services.storage import upload_image as storage_upload, upload_video as storage_upload_video
 from ..services.notification import notify_new_request, notify_status_change, notify_ooo
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -222,6 +222,27 @@ async def upload_image(job_id: int, file: UploadFile = File(...),
     data = await file.read()
     try:
         filename = save_upload(data, ext)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    db.add(RequestImage(request_id=job_id, filename=filename))
+    db.commit()
+    return get_req(db, job_id)
+
+
+@router.post("/{job_id}/videos", response_model=RequestOut)
+async def upload_video_file(job_id: int, file: UploadFile = File(...),
+                            db: Session = Depends(get_db),
+                            current_user: User = Depends(get_current_user)):
+    if not get_req(db, job_id):
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".mp4", ".mov", ".webm", ".m4v", ".avi"):
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์วิดีโอ (.mp4 .mov .webm .m4v)")
+    data = await file.read()
+    if len(data) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="ไฟล์วิดีโอใหญ่เกินไป (สูงสุด 100MB)")
+    try:
+        filename = storage_upload_video(data, folder="hotel-maintenance", extension=ext)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     db.add(RequestImage(request_id=job_id, filename=filename))
@@ -698,11 +719,37 @@ async def upload_inspection_image(
             .filter(Inspection.id == inspection_id, Inspection.request_id == job_id).first())
     if not insp:
         raise HTTPException(status_code=404, detail="ไม่พบการตรวจ")
-    ext = os.path.splitext(file.filename)[1].lower()
+    ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp"):
         raise HTTPException(status_code=400, detail="รองรับเฉพาะรูปภาพ")
     data = await file.read()
     filename = save_upload(data, ext)
+    db.add(InspectionImage(inspection_id=insp.id, filename=filename))
+    db.commit()
+    return get_req(db, job_id)
+
+
+@router.post("/{job_id}/inspect-videos", response_model=RequestOut)
+async def upload_inspection_video(
+    job_id: int, inspection_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    insp = (db.query(Inspection)
+            .filter(Inspection.id == inspection_id, Inspection.request_id == job_id).first())
+    if not insp:
+        raise HTTPException(status_code=404, detail="ไม่พบการตรวจ")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".mp4", ".mov", ".webm", ".m4v"):
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์วิดีโอ")
+    data = await file.read()
+    if len(data) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="ไฟล์วิดีโอใหญ่เกินไป (สูงสุด 100MB)")
+    try:
+        filename = storage_upload_video(data, folder="hotel-maintenance", extension=ext)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     db.add(InspectionImage(inspection_id=insp.id, filename=filename))
     db.commit()
     return get_req(db, job_id)
