@@ -5,7 +5,7 @@ import { useLang } from '../context/LangContext'
 import { api } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare } from 'lucide-react'
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare, Timer } from 'lucide-react'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 
@@ -56,7 +56,25 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [selectedJobId, setSelectedJobId] = useState(null)
   const [activeFilter, setActiveFilter] = useState(null)
+  const [slaSettings, setSlaSettings] = useState({})
   const dateLocale = lang === 'th' ? thLocale : enUS
+
+  function elapsedMins(createdAt) {
+    return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
+  }
+  function fmtElapsed(mins) {
+    if (mins < 60) return `${mins}m`
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`
+  }
+  function urgentSlaOverdue(job) {
+    if (job.priority !== 'urgent' && job.priority !== 'very_urgent') return 0
+    const threshold = slaSettings[job.priority]
+    if (!threshold) return 0
+    if (['completed', 'cancelled'].includes(job.status)) return 0
+    if (job.work_orders?.some(w => w.accepted_at)) return 0
+    const over = elapsedMins(job.created_at) - threshold
+    return over > 0 ? over : 0
+  }
 
   // Department filter
   const [departments, setDepartments] = useState([])
@@ -68,6 +86,7 @@ export default function DashboardPage() {
     api.getJobs({ limit: 1000 }).then(setJobs).finally(() => setLoading(false))
     api.getCompletedToday().then(setCompletedToday).catch(() => setCompletedToday([]))
     api.getDepartments().then(setDepartments).catch(() => {})
+    api.getSLASettings().then(setSlaSettings).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -248,11 +267,26 @@ export default function DashboardPage() {
                           <DoorClosed className="w-3 h-3" /> OOO
                         </span>
                       )}
+                      {urgentSlaOverdue(job) > 0 && (
+                        <span className="text-xs px-1.5 py-0.5 bg-red-600 text-white rounded font-bold flex items-center gap-0.5">
+                          <Timer className="w-3 h-3" /> {t('request.slaOverdue')} {fmtElapsed(urgentSlaOverdue(job))}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">{job.description}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {job.main_area?.name}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
                       {' · '}{job.reporter?.full_name}{job.reporter?.department ? ` (${job.reporter.department})` : ''}
+                      {job.work_orders?.[0]?.technician && (
+                        <>
+                          {' · '}{t('request.techTag')}: {job.work_orders[0].technician.full_name}
+                          {job.work_orders[0].accepted_at && (
+                            <span className="text-gray-400 ml-1">
+                              ({t('request.techAccepted')} {format(new Date(job.work_orders[0].accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
+                            </span>
+                          )}
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="flex-shrink-0 text-right">

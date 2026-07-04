@@ -178,6 +178,8 @@ export default {
     clearTime: 'Clear time',
     filterDept: 'Dept.',
     allDepts: 'All Depts',
+    slaOverdue: 'Overdue',
+    techAccepted: 'Accepted',
   },
   workOrder: {
     assign: 'Assign',

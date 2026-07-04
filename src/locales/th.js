@@ -178,6 +178,8 @@ export default {
     clearTime: 'ล้างเวลา',
     filterDept: 'แผนก',
     allDepts: 'ทุกแผนก',
+    slaOverdue: 'เกินเวลา',
+    techAccepted: 'รับงาน',
   },
   workOrder: {
     assign: 'จ่ายงาน',

@@ -98,6 +98,15 @@ export default function RequestsPage() {
     if (mins < 60) return `${mins}m`
     return `${Math.floor(mins / 60)}h ${mins % 60}m`
   }
+  function urgentSlaOverdue(job) {
+    if (job.priority !== 'urgent' && job.priority !== 'very_urgent') return 0
+    const threshold = slaSettings[job.priority]
+    if (!threshold) return 0
+    if (['completed', 'cancelled'].includes(job.status)) return 0
+    if (job.work_orders?.some(w => w.accepted_at)) return 0
+    const over = elapsedMins(job.created_at) - threshold
+    return over > 0 ? over : 0
+  }
 
   // Merge active departments from API + any extra dept names from loaded jobs (covers soft-deleted depts)
   const deptOptions = (() => {
@@ -222,6 +231,11 @@ export default function RequestsPage() {
                     </span>
                   )}
                   <StatusBadge status={job.status} />
+                  {urgentSlaOverdue(job) > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 bg-red-600 text-white rounded font-bold">
+                      ⚠ {t('request.slaOverdue')} {fmtElapsed(urgentSlaOverdue(job))}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-medium text-gray-900 truncate">{job.description}</p>
                 <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
@@ -231,7 +245,17 @@ export default function RequestsPage() {
                   <span>·</span>
                   <span>{job.reporter?.full_name}{job.reporter?.department ? ` (${job.reporter.department})` : ''}</span>
                   {job.work_orders?.[0]?.technician && (
-                    <><span>·</span><span>{t('request.techTag')}: {job.work_orders[0].technician.full_name}</span></>
+                    <>
+                      <span>·</span>
+                      <span>
+                        {t('request.techTag')}: {job.work_orders[0].technician.full_name}
+                        {job.work_orders[0].accepted_at && (
+                          <span className="text-gray-400 ml-1">
+                            ({t('request.techAccepted')} {format(new Date(job.work_orders[0].accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
+                          </span>
+                        )}
+                      </span>
+                    </>
                   )}
                 </div>
               </div>
