@@ -22,6 +22,12 @@ export default function RequestsPage() {
   const [search, setSearch] = useState('')
   const [slaSettings, setSlaSettings] = useState({})
   const [page, setPage] = useState(1)
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(id)
+  }, [])
 
   // Department filter
   const [departments, setDepartments] = useState([])
@@ -81,7 +87,7 @@ export default function RequestsPage() {
   }
 
   function elapsedMins(createdAt) {
-    return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
+    return Math.floor((now - new Date(createdAt).getTime()) / 60000)
   }
   const SLA_OPEN = ['pending', 'assigned', 'in_progress', 'reopened', 'external_tech']
   function slaColor(job) {

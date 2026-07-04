@@ -598,6 +598,14 @@ export default {
       },
     },
   },
+  sla: {
+    elapsed: 'เวลาที่ใช้ไป',
+    limit: 'กำหนด SLA',
+    within: 'อยู่ใน SLA',
+    overdue: 'เกิน SLA',
+    notSet: 'ไม่ได้กำหนด SLA',
+    autoRefresh: 'อัพเดทอัตโนมัติทุก 1 นาที',
+  },
   login: {
     welcome: 'ยินดีต้อนรับ',
     subtitle: 'กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ',

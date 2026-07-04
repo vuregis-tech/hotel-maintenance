@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, imgUrl, schedToISO, isVideoUrl } from '../../lib/api'
+import { api, imgUrl, schedToISO, isVideoUrl, activeWorkOrder } from '../../lib/api'
 import CameraRecorder from './CameraRecorder'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LangContext'
@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 import {
   X, Wrench, CheckCircle, XCircle, Plus, Trash2, Package,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2, Video, Camera, Image as ImageIcon
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2, Video, Camera, Image as ImageIcon, Timer
 } from 'lucide-react'
 
 function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null, techWorkload = {} }) {
@@ -249,6 +249,14 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   })
   const [locationHistory, setLocationHistory] = useState([])
   const [histLoading, setHistLoading] = useState(false)
+  const [slaSettings, setSlaSettings] = useState({})
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    api.getSLASettings().then(setSlaSettings).catch(() => {})
+    const id = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     if (!jobId) return
@@ -526,6 +534,11 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     } finally { setHistLoading(false) }
   }
 
+  function fmtElapsed(mins) {
+    if (mins < 60) return `${mins}m`
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`
+  }
+
   const wo = job?.work_orders?.find(w => ['assigned','in_progress','completed','external'].includes(w.status)) || job?.work_orders?.[0]
   const latestInspection = job?.inspections?.slice(-1)[0]
 
@@ -694,6 +707,47 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                   </button>
                 </div>
               )}
+
+              {/* SLA Status Banner */}
+              {job && ['urgent','very_urgent'].includes(job.priority) && !['completed','cancelled'].includes(job.status) && (() => {
+                const threshold = slaSettings[job.priority]
+                const elapsedMins = Math.floor((now - new Date(job.created_at).getTime()) / 60000)
+                const awo = activeWorkOrder(job)
+                const accepted = !!awo?.accepted_at
+                const overMins = threshold ? elapsedMins - threshold : 0
+                const isOverdue = !accepted && threshold && overMins > 0
+                const isWarning = !accepted && threshold && elapsedMins >= threshold * 0.8 && !isOverdue
+                if (!threshold) return null
+                return (
+                  <div className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${
+                    accepted
+                      ? 'bg-green-50 border-green-200 text-green-800'
+                      : isOverdue
+                        ? 'bg-red-50 border-red-300 text-red-800'
+                        : isWarning
+                          ? 'bg-orange-50 border-orange-300 text-orange-800'
+                          : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}>
+                    <Timer className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="font-semibold">
+                        {accepted
+                          ? t('sla.within')
+                          : isOverdue
+                            ? `${t('sla.overdue')} ${fmtElapsed(overMins)}`
+                            : t('sla.elapsed')}
+                      </div>
+                      <div className="text-xs opacity-75 flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>{t('sla.elapsed')}: {fmtElapsed(elapsedMins)}</span>
+                        <span>{t('sla.limit')}: {fmtElapsed(threshold)}</span>
+                        {accepted && awo?.accepted_at && (
+                          <span>{t('request.techAccepted')}: {format(new Date(awo.accepted_at), 'd MMM HH:mm', { locale: dateLocale })}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Request Info */}
               <Section title={t('workOrder.infoSection')}>

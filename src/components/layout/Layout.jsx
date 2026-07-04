@@ -182,11 +182,6 @@ export default function Layout({ children }) {
           )}
         </header>
 
-        {/* Dev banner */}
-        <div className="bg-amber-400 text-amber-900 text-center text-xs font-bold py-1 tracking-widest shrink-0">
-          ⚠ User Testing Version ⚠
-        </div>
-
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {children}

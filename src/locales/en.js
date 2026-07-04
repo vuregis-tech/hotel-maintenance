@@ -598,6 +598,14 @@ export default {
       },
     },
   },
+  sla: {
+    elapsed: 'Elapsed',
+    limit: 'SLA Limit',
+    within: 'Within SLA',
+    overdue: 'SLA Overdue',
+    notSet: 'No SLA set',
+    autoRefresh: 'Auto-refreshes every 1 min',
+  },
   login: {
     welcome: 'Welcome',
     subtitle: 'Please sign in to continue',

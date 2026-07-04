@@ -73,6 +73,15 @@ export function AuthProvider({ children }) {
     return permissions[user.role]?.includes(feature) ?? false
   }, [user, permissions])
 
+  // Poll every 5 min (only when tab visible) so permission changes by admin propagate without full refresh
+  useEffect(() => {
+    if (!user) return
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') loadPermissions()
+    }, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [user?.id])
+
   return (
     <AuthContext.Provider value={{ user, loading, signIn, signOut, mustChangePassword, clearMustChangePassword, permissions, hasPermission, reloadPermissions: loadPermissions }}>
       {children}

@@ -5,7 +5,7 @@ import { useLang } from '../context/LangContext'
 import { api, activeWorkOrder } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare, Timer } from 'lucide-react'
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare, Timer, ChevronLeft } from 'lucide-react'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 
@@ -57,10 +57,17 @@ export default function DashboardPage() {
   const [selectedJobId, setSelectedJobId] = useState(null)
   const [activeFilter, setActiveFilter] = useState(null)
   const [slaSettings, setSlaSettings] = useState({})
+  const [dashPage, setDashPage] = useState(1)
+  const [now, setNow] = useState(Date.now())
   const dateLocale = lang === 'th' ? thLocale : enUS
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(id)
+  }, [])
+
   function elapsedMins(createdAt) {
-    return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
+    return Math.floor((now - new Date(createdAt).getTime()) / 60000)
   }
   function fmtElapsed(mins) {
     if (mins < 60) return `${mins}m`
@@ -137,14 +144,27 @@ export default function DashboardPage() {
     ooo: 'dashboard.stats.ooo', completedToday: 'dashboard.stats.completedToday',
   }
 
-  const displayedJobs = activeFilter === 'completedToday'
+  const DASH_PAGE_SIZE = 20
+  const activeFilteredJobs = activeFilter === 'completedToday'
     ? filteredToday
     : activeFilter
       ? filteredJobs.filter(FILTER_MATCH[activeFilter])
-      : filteredJobs.slice(0, 8)
+      : null
+
+  const displayedJobs = activeFilteredJobs
+    ? activeFilteredJobs.slice((dashPage - 1) * DASH_PAGE_SIZE, dashPage * DASH_PAGE_SIZE)
+    : filteredJobs.slice(0, 8)
+
+  const dashTotalPages = activeFilteredJobs
+    ? Math.max(1, Math.ceil(activeFilteredJobs.length / DASH_PAGE_SIZE))
+    : 1
 
   function toggleFilter(key) {
-    setActiveFilter(prev => prev === key ? null : key)
+    setActiveFilter(prev => {
+      if (prev === key) { setDashPage(1); return null }
+      setDashPage(1)
+      return key
+    })
   }
 
   const cards = [
@@ -300,6 +320,24 @@ export default function DashboardPage() {
                   </div>
                 </button>
               )})}
+            </div>
+          )}
+
+          {/* Pagination — shown only when a filter is active and results span multiple pages */}
+          {activeFilter && dashTotalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
+              <span>{activeFilteredJobs?.length} {t('request.itemsCount')}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setDashPage(p => Math.max(1, p - 1))} disabled={dashPage === 1}
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-2">{dashPage} / {dashTotalPages}</span>
+                <button onClick={() => setDashPage(p => Math.min(dashTotalPages, p + 1))} disabled={dashPage === dashTotalPages}
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-30">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>
