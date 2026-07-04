@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, imgUrl, schedToISO, isVideoUrl } from '../../lib/api'
+import CameraRecorder from './CameraRecorder'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LangContext'
 import StatusBadge from './StatusBadge'
@@ -240,6 +241,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   })
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
   const [inspectMedia, setInspectMedia] = useState([]) // [{file, preview, isVideo}]
+  const [showInspectRecorder, setShowInspectRecorder] = useState(false)
   const [editForm, setEditForm] = useState({
     description: '', issue_type_id: '', priority: 'normal',
     sched_date: '', sched_hour: '08', sched_minute: '00',
@@ -415,6 +417,11 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       URL.revokeObjectURL(prev[idx].preview)
       return prev.filter((_, i) => i !== idx)
     })
+  }
+
+  function handleInspectRecordedVideo(file, url) {
+    setShowInspectRecorder(false)
+    setInspectMedia(prev => [...prev, { file, preview: url, isVideo: true }])
   }
 
   async function handleInspect() {
@@ -1075,13 +1082,23 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                   ))}
                 </div>
               )}
-              <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-2.5 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
-                <ImageIcon className="w-4 h-4 text-gray-400" />
-                <span className="text-xs font-medium text-gray-500">
-                  {lang === 'th' ? 'เลือกรูป/วีดิโอ' : 'Select Files'}
-                </span>
-                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleInspectMediaAdd} />
-              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-blue-300 rounded-xl py-2.5 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                  <Camera className="w-4 h-4 text-blue-500" />
+                  <span className="text-[11px] font-medium text-blue-600 text-center">{lang === 'th' ? 'ถ่ายรูป' : 'Take Photo'}</span>
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleInspectMediaAdd} />
+                </label>
+                <button type="button" onClick={() => setShowInspectRecorder(true)}
+                  className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-red-300 rounded-xl py-2.5 hover:border-red-500 hover:bg-red-50 transition-colors">
+                  <Video className="w-4 h-4 text-red-500" />
+                  <span className="text-[11px] font-medium text-red-600 text-center">{lang === 'th' ? 'บันทึกวีดิโอ' : 'Record'}</span>
+                </button>
+                <label className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-300 rounded-xl py-2.5 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
+                  <ImageIcon className="w-4 h-4 text-gray-400" />
+                  <span className="text-[11px] font-medium text-gray-500 text-center">{lang === 'th' ? 'เลือกไฟล์' : 'Select Files'}</span>
+                  <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleInspectMediaAdd} />
+                </label>
+              </div>
             </div>
           </div>
           <div className="flex gap-2 mt-4">
@@ -1340,6 +1357,14 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
             </button>
           </div>
         </InnerModal>
+      )}
+
+      {showInspectRecorder && (
+        <CameraRecorder
+          zIndex="z-[70]"
+          onSave={handleInspectRecordedVideo}
+          onClose={() => setShowInspectRecorder(false)}
+        />
       )}
 
       {modal === 'history' && (
