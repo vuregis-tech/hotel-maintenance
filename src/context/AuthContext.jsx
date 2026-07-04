@@ -48,9 +48,10 @@ export function AuthProvider({ children }) {
     const data = await api.login(username, password)
     localStorage.setItem('token', data.access_token)
     activeUserRef.current = data.user.id
+    // Load permissions before setting user so nav renders with correct permissions immediately
+    await loadPermissions()
     setUser(data.user)
     setMustChangePassword(data.must_change_password || false)
-    loadPermissions()
     return data
   }
 

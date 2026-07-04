@@ -255,7 +255,9 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   useEffect(() => {
     api.getSLASettings().then(setSlaSettings).catch(() => {})
     const id = setInterval(() => setNow(Date.now()), 60000)
-    return () => clearInterval(id)
+    function onVisible() { if (document.visibilityState === 'visible') setNow(Date.now()) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
   }, [])
 
   useEffect(() => {

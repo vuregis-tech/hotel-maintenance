@@ -52,11 +52,13 @@ export default function RequestsPage() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setPage(1)
     api.getJobs({ status: filterStatus || undefined, limit: 1000 })
-      .then(setJobs)
-      .finally(() => setLoading(false))
+      .then(data => { if (!cancelled) setJobs(data) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [filterStatus])
 
   // Reset page when search changes

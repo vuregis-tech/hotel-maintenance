@@ -366,7 +366,7 @@ def reseed_config(current_user: User = Depends(require_roles("admin"))):
 
 
 @app.get("/api/db-info")
-def db_info():
+def db_info(current_user: User = Depends(require_roles("admin"))):
     """Debug endpoint — ดูว่าใช้ database อะไร"""
     raw_url = settings.DATABASE_URL
     is_pg = "postgresql" in raw_url or raw_url.startswith("postgres://")
@@ -381,7 +381,7 @@ def db_info():
 
 
 @app.get("/api/telegram-test")
-async def telegram_test():
+async def telegram_test(current_user: User = Depends(require_roles("admin"))):
     """ทดสอบ Telegram — เรียก endpoint นี้แล้วดูผลลัพธ์"""
     import httpx
     s = settings
@@ -523,13 +523,16 @@ def get_permissions(current_user: User = Depends(get_current_user)):
     try:
         row = db.query(AppSetting).filter(AppSetting.key == "role_permissions").first()
         if row and row.value:
-            perms = json.loads(row.value)
+            try:
+                perms = json.loads(row.value)
+            except (json.JSONDecodeError, ValueError):
+                return {k: list(v) for k, v in _DEFAULT_PERMISSIONS.items()}
             for role, defaults in _DEFAULT_PERMISSIONS.items():
                 if role not in perms:
-                    perms[role] = defaults
+                    perms[role] = list(defaults)
             perms["admin"] = list(_ALL_FEATURES)
             return perms
-        return _DEFAULT_PERMISSIONS
+        return {k: list(v) for k, v in _DEFAULT_PERMISSIONS.items()}
     finally:
         db.close()
 

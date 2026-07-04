@@ -160,11 +160,8 @@ export default function DashboardPage() {
     : 1
 
   function toggleFilter(key) {
-    setActiveFilter(prev => {
-      if (prev === key) { setDashPage(1); return null }
-      setDashPage(1)
-      return key
-    })
+    setDashPage(1)
+    setActiveFilter(prev => prev === key ? null : key)
   }
 
   const cards = [

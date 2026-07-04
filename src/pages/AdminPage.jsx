@@ -770,7 +770,22 @@ function SLASection() {
     })
   }
 
-  useEffect(() => { loadSLA() }, [])
+  useEffect(() => {
+    let cancelled = false
+    setSlaLoading(true)
+    setSlaLoadError(false)
+    api.getSLASettings().then(data => {
+      if (cancelled) return
+      const toForm = (val) => val
+        ? { infinite: false, hours: Math.floor(val / 60), mins: val % 60 }
+        : { infinite: true, hours: 0, mins: 0 }
+      setSlaForm({ normal: toForm(data.normal), urgent: toForm(data.urgent), very_urgent: toForm(data.very_urgent) })
+      setSlaLoading(false)
+    }).catch(() => {
+      if (!cancelled) { setSlaLoading(false); setSlaLoadError(true) }
+    })
+    return () => { cancelled = true }
+  }, [])
 
   async function handleSave() {
     setSaving(true)
@@ -862,11 +877,14 @@ function PermissionsTab() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     api.getPermissions().then(data => {
+      if (cancelled) return
       const editable = {}
       EDITABLE_ROLES.forEach(r => { editable[r] = data[r] || [] })
       setPerms(editable)
-    }).catch(err => toast.error(err.message))
+    }).catch(err => { if (!cancelled) toast.error(err.message) })
+    return () => { cancelled = true }
   }, [])
 
   function toggle(role, feature) {
