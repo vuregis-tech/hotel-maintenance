@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
-import { api } from '../lib/api'
+import { api, activeWorkOrder } from '../lib/api'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
 import { ClipboardList, Clock, CheckCircle, AlertTriangle, Plus, ChevronDown, ChevronRight, Wrench, DoorClosed, X, Zap, CheckSquare, Timer } from 'lucide-react'
@@ -71,7 +71,7 @@ export default function DashboardPage() {
     const threshold = slaSettings[job.priority]
     if (!threshold) return 0
     if (['completed', 'cancelled'].includes(job.status)) return 0
-    if (job.work_orders?.some(w => w.accepted_at)) return 0
+    if (activeWorkOrder(job)?.accepted_at) return 0
     const over = elapsedMins(job.created_at) - threshold
     return over > 0 ? over : 0
   }
@@ -250,7 +250,10 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {displayedJobs.map(job => (
+              {displayedJobs.map(job => {
+                const overdue = urgentSlaOverdue(job)
+                const awo = activeWorkOrder(job)
+                return (
                 <button key={job.id} onClick={() => setSelectedJobId(job.id)}
                   className="w-full flex items-start gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
                   <div className="flex-1 min-w-0">
@@ -267,9 +270,9 @@ export default function DashboardPage() {
                           <DoorClosed className="w-3 h-3" /> OOO
                         </span>
                       )}
-                      {urgentSlaOverdue(job) > 0 && (
+                      {overdue > 0 && (
                         <span className="text-xs px-1.5 py-0.5 bg-red-600 text-white rounded font-bold flex items-center gap-0.5">
-                          <Timer className="w-3 h-3" /> {t('request.slaOverdue')} {fmtElapsed(urgentSlaOverdue(job))}
+                          <Timer className="w-3 h-3" /> {t('request.slaOverdue')} {fmtElapsed(overdue)}
                         </span>
                       )}
                     </div>
@@ -277,12 +280,12 @@ export default function DashboardPage() {
                     <p className="text-xs text-gray-500 mt-0.5">
                       {job.main_area?.name}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
                       {' · '}{job.reporter?.full_name}{job.reporter?.department ? ` (${job.reporter.department})` : ''}
-                      {job.work_orders?.[0]?.technician && (
+                      {awo?.technician && (
                         <>
-                          {' · '}{t('request.techTag')}: {job.work_orders[0].technician.full_name}
-                          {job.work_orders[0].accepted_at && (
+                          {' · '}{t('request.techTag')}: {awo.technician.full_name}
+                          {awo.accepted_at && (
                             <span className="text-gray-400 ml-1">
-                              ({t('request.techAccepted')} {format(new Date(job.work_orders[0].accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
+                              ({t('request.techAccepted')} {format(new Date(awo.accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
                             </span>
                           )}
                         </>
@@ -296,7 +299,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 </button>
-              ))}
+              )})}
             </div>
           )}
         </div>

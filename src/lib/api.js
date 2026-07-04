@@ -19,6 +19,14 @@ export function imgUrl(filename) {
   return `/uploads/${filename}`                             // legacy filename
 }
 
+// Returns the current active work order for a job (last non-rejected/transferred one)
+// Fixes the bug where work_orders[0] could be an old rejected/transferred order
+export function activeWorkOrder(job) {
+  if (!job?.work_orders?.length) return null
+  const inactive = ['rejected', 'transferred']
+  return [...job.work_orders].reverse().find(w => !inactive.includes(w.status)) ?? null
+}
+
 export function isVideoUrl(url) {
   if (!url) return false
   const u = url.toLowerCase()

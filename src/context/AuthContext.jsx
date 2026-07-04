@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 
 const AuthContext = createContext({})
@@ -15,9 +15,16 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS)
+  const activeUserRef = useRef(null)
 
   function loadPermissions() {
-    api.getPermissions().then(setPermissions).catch(() => {})
+    const userId = activeUserRef.current
+    return api.getPermissions()
+      .then(data => {
+        // Discard if user changed (signed out) while the request was in-flight
+        if (activeUserRef.current === userId) setPermissions(data)
+      })
+      .catch(() => {})
   }
 
   useEffect(() => {
@@ -25,6 +32,7 @@ export function AuthProvider({ children }) {
     if (token) {
       api.me()
         .then(u => {
+          activeUserRef.current = u.id
           setUser(u)
           setMustChangePassword(u.must_change_password || false)
           loadPermissions()
@@ -39,6 +47,7 @@ export function AuthProvider({ children }) {
   async function signIn(username, password) {
     const data = await api.login(username, password)
     localStorage.setItem('token', data.access_token)
+    activeUserRef.current = data.user.id
     setUser(data.user)
     setMustChangePassword(data.must_change_password || false)
     loadPermissions()
@@ -46,6 +55,7 @@ export function AuthProvider({ children }) {
   }
 
   function signOut() {
+    activeUserRef.current = null
     localStorage.removeItem('token')
     setUser(null)
     setMustChangePassword(false)

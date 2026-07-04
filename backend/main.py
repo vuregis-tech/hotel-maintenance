@@ -535,11 +535,19 @@ def get_permissions(current_user: User = Depends(get_current_user)):
 
 @app.put("/api/admin/permissions")
 def update_permissions(data: dict, current_user: User = Depends(require_roles("admin"))):
-    data["admin"] = list(_ALL_FEATURES)
+    _valid_roles = {'supervisor', 'technician', 'staff'}
+    _feature_set = set(_ALL_FEATURES)
+    # Only accept known roles with valid feature lists — prevents injection of arbitrary roles/features
+    filtered = {
+        role: [f for f in feats if f in _feature_set]
+        for role, feats in data.items()
+        if role in _valid_roles and isinstance(feats, list)
+    }
+    filtered["admin"] = list(_ALL_FEATURES)
     db = SessionLocal()
     try:
         row = db.query(AppSetting).filter(AppSetting.key == "role_permissions").first()
-        val = json.dumps(data)
+        val = json.dumps(filtered)
         if row:
             row.value = val
         else:
@@ -547,7 +555,7 @@ def update_permissions(data: dict, current_user: User = Depends(require_roles("a
         db.commit()
     finally:
         db.close()
-    return data
+    return filtered
 
 @app.delete("/api/admin/logo")
 def delete_logo(current_user: User = Depends(require_roles("admin"))):

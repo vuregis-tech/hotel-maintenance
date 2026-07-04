@@ -887,7 +887,7 @@ function PermissionsTab() {
     setSaving(true)
     try {
       await api.updatePermissions(perms)
-      reloadPermissions()
+      await reloadPermissions()
       toast.success(t('admin.permissions.saved'))
     } catch (err) { toast.error(err.message) }
     finally { setSaving(false) }

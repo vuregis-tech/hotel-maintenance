@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, activeWorkOrder } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
@@ -103,7 +103,8 @@ export default function RequestsPage() {
     const threshold = slaSettings[job.priority]
     if (!threshold) return 0
     if (['completed', 'cancelled'].includes(job.status)) return 0
-    if (job.work_orders?.some(w => w.accepted_at)) return 0
+    // Only count accepted_at on the active (non-rejected/transferred) work order
+    if (activeWorkOrder(job)?.accepted_at) return 0
     const over = elapsedMins(job.created_at) - threshold
     return over > 0 ? over : 0
   }
@@ -217,7 +218,10 @@ export default function RequestsPage() {
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">{t('request.noJobs')}</div>
         ) : (
-          paginated.map(job => (
+          paginated.map(job => {
+            const overdue = urgentSlaOverdue(job)
+            const awo = activeWorkOrder(job)
+            return (
             <Link key={job.id} to={`/requests/${job.id}`}
               className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors block ${slaColor(job)}`}>
               <div className="flex-1 min-w-0">
@@ -231,9 +235,9 @@ export default function RequestsPage() {
                     </span>
                   )}
                   <StatusBadge status={job.status} />
-                  {urgentSlaOverdue(job) > 0 && (
+                  {overdue > 0 && (
                     <span className="text-xs px-1.5 py-0.5 bg-red-600 text-white rounded font-bold">
-                      ⚠ {t('request.slaOverdue')} {fmtElapsed(urgentSlaOverdue(job))}
+                      ⚠ {t('request.slaOverdue')} {fmtElapsed(overdue)}
                     </span>
                   )}
                 </div>
@@ -244,14 +248,14 @@ export default function RequestsPage() {
                   </span>
                   <span>·</span>
                   <span>{job.reporter?.full_name}{job.reporter?.department ? ` (${job.reporter.department})` : ''}</span>
-                  {job.work_orders?.[0]?.technician && (
+                  {awo?.technician && (
                     <>
                       <span>·</span>
                       <span>
-                        {t('request.techTag')}: {job.work_orders[0].technician.full_name}
-                        {job.work_orders[0].accepted_at && (
+                        {t('request.techTag')}: {awo.technician.full_name}
+                        {awo.accepted_at && (
                           <span className="text-gray-400 ml-1">
-                            ({t('request.techAccepted')} {format(new Date(job.work_orders[0].accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
+                            ({t('request.techAccepted')} {format(new Date(awo.accepted_at), 'd MMM HH:mm', { locale: dateLocale })})
                           </span>
                         )}
                       </span>
@@ -268,7 +272,7 @@ export default function RequestsPage() {
                 )}
               </div>
             </Link>
-          ))
+          )})
         )}
       </div>
 
