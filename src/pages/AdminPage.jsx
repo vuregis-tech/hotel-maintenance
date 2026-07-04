@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database, ImagePlus, Trash } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, X, Check, ArrowUp, ArrowDown, Cloud, CloudOff, HardDrive, RefreshCw, Database, ImagePlus, Trash, ShieldCheck, RotateCcw } from 'lucide-react'
 
 // ─── Mini reusable inline edit row ───────────────────
 function EditableItem({ name, onSave, onDelete, onMoveUp, onMoveDown, children }) {
@@ -842,16 +842,134 @@ function SLASection() {
   )
 }
 
+const ALL_FEATURES = [
+  'view_dashboard','create_request','view_all_requests',
+  'assign_work','accept_work','inspect_job',
+  'cancel_job','reopen_job','view_reports',
+  'manage_on_duty','manage_settings',
+]
+const EDITABLE_ROLES = ['supervisor','technician','staff']
+const DEFAULT_PERMISSIONS = {
+  supervisor: ['view_dashboard','create_request','view_all_requests','assign_work','accept_work','inspect_job','cancel_job','reopen_job','view_reports','manage_on_duty'],
+  technician: ['view_dashboard','create_request','view_all_requests','accept_work','inspect_job','view_reports','manage_on_duty'],
+  staff:      ['view_dashboard','create_request'],
+}
+
+function PermissionsTab() {
+  const { t } = useLang()
+  const { reloadPermissions } = useAuth()
+  const [perms, setPerms] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.getPermissions().then(data => {
+      const editable = {}
+      EDITABLE_ROLES.forEach(r => { editable[r] = data[r] || [] })
+      setPerms(editable)
+    }).catch(err => toast.error(err.message))
+  }, [])
+
+  function toggle(role, feature) {
+    setPerms(prev => {
+      const list = prev[role] || []
+      return {
+        ...prev,
+        [role]: list.includes(feature) ? list.filter(f => f !== feature) : [...list, feature],
+      }
+    })
+  }
+
+  function resetDefaults() {
+    setPerms(EDITABLE_ROLES.reduce((acc, r) => ({ ...acc, [r]: [...(DEFAULT_PERMISSIONS[r] || [])] }), {}))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await api.updatePermissions(perms)
+      reloadPermissions()
+      toast.success(t('admin.permissions.saved'))
+    } catch (err) { toast.error(err.message) }
+    finally { setSaving(false) }
+  }
+
+  if (!perms) return <div className="text-sm text-gray-400 text-center py-8">{t('common.loading')}</div>
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-semibold text-gray-900">{t('admin.permissions.title')}</h2>
+        <p className="text-xs text-gray-400 mt-0.5">{t('admin.permissions.description')}</p>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
+        <ShieldCheck className="w-4 h-4 text-purple-600 flex-shrink-0" />
+        <p className="text-xs text-purple-700">{t('admin.permissions.adminLocked')}</p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-3 pr-4 font-medium text-gray-600 text-xs w-52">ฟีเจอร์</th>
+              {EDITABLE_ROLES.map(role => (
+                <th key={role} className="text-center py-3 px-4 font-medium text-gray-700 text-sm min-w-[100px]">
+                  {t(`admin.permissions.roles.${role}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {ALL_FEATURES.map(feature => (
+              <tr key={feature} className="hover:bg-gray-50">
+                <td className="py-3 pr-4 text-sm text-gray-700">
+                  {t(`admin.permissions.features.${feature}`)}
+                </td>
+                {EDITABLE_ROLES.map(role => (
+                  <td key={role} className="py-3 px-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={perms[role]?.includes(feature) ?? false}
+                      onChange={() => toggle(role, feature)}
+                      className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <button onClick={resetDefaults}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+          <RotateCcw className="w-3.5 h-3.5" />
+          {t('admin.permissions.resetDefault')}
+        </button>
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          {saving ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { t } = useLang()
   const { user } = useAuth()
   const [tab, setTab] = useState('users')
 
   const tabs = [
-    { key: 'users', label: t('admin.tabs.users') },
+    { key: 'users',       label: t('admin.tabs.users') },
     { key: 'departments', label: t('admin.tabs.departments') },
-    { key: 'areas', label: t('admin.tabs.areas') },
+    { key: 'areas',       label: t('admin.tabs.areas') },
     { key: 'issue_types', label: t('admin.tabs.issueTypes') },
+    ...(user?.role === 'admin' ? [
+      { key: 'sla',         label: t('admin.tabs.sla') },
+      { key: 'permissions', label: t('admin.tabs.permissions') },
+    ] : []),
   ]
 
   return (
@@ -859,12 +977,11 @@ export default function AdminPage() {
       <h1 className="text-xl font-bold text-gray-900">{t('admin.title')}</h1>
       <LogoBanner />
       <StorageStatusBanner />
-      {user?.role === 'admin' && <SLASection />}
 
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {tabs.map(tb => (
           <button key={tb.key} onClick={() => setTab(tb.key)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex-shrink-0 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === tb.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
             {tb.label}
@@ -873,10 +990,12 @@ export default function AdminPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        {tab === 'users' && <UsersTab />}
+        {tab === 'users'       && <UsersTab />}
         {tab === 'departments' && <DepartmentsTab />}
-        {tab === 'areas' && <AreasTab />}
+        {tab === 'areas'       && <AreasTab />}
         {tab === 'issue_types' && <IssueTypesTab />}
+        {tab === 'sla'         && <SLASection />}
+        {tab === 'permissions' && <PermissionsTab />}
       </div>
     </div>
   )

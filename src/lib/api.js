@@ -154,6 +154,10 @@ export const api = {
   getSLASettings: () => request('GET', '/api/admin/sla'),
   updateSLASettings: (data) => request('PUT', '/api/admin/sla', data),
 
+  // Permissions
+  getPermissions: () => request('GET', '/api/admin/permissions'),
+  updatePermissions: (data) => request('PUT', '/api/admin/permissions', data),
+
   // System
   getStorageStatus: () => request('GET', '/api/system/storage-status'),
   reseedConfig: () => request('POST', '/api/admin/reseed-config'),

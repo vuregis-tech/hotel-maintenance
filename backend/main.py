@@ -1,4 +1,5 @@
 import logging
+import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -502,6 +503,51 @@ def update_sla(data: SLASettings, current_user: User = Depends(require_roles("ad
         return {"ok": True}
     finally:
         db.close()
+
+_ALL_FEATURES = [
+    "view_dashboard", "create_request", "view_all_requests",
+    "assign_work", "accept_work", "inspect_job",
+    "cancel_job", "reopen_job", "view_reports",
+    "manage_on_duty", "manage_settings",
+]
+_DEFAULT_PERMISSIONS = {
+    "admin":      list(_ALL_FEATURES),
+    "supervisor": ["view_dashboard","create_request","view_all_requests","assign_work","accept_work","inspect_job","cancel_job","reopen_job","view_reports","manage_on_duty"],
+    "technician": ["view_dashboard","create_request","view_all_requests","accept_work","inspect_job","view_reports","manage_on_duty"],
+    "staff":      ["view_dashboard","create_request"],
+}
+
+@app.get("/api/admin/permissions")
+def get_permissions(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "role_permissions").first()
+        if row and row.value:
+            perms = json.loads(row.value)
+            for role, defaults in _DEFAULT_PERMISSIONS.items():
+                if role not in perms:
+                    perms[role] = defaults
+            perms["admin"] = list(_ALL_FEATURES)
+            return perms
+        return _DEFAULT_PERMISSIONS
+    finally:
+        db.close()
+
+@app.put("/api/admin/permissions")
+def update_permissions(data: dict, current_user: User = Depends(require_roles("admin"))):
+    data["admin"] = list(_ALL_FEATURES)
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "role_permissions").first()
+        val = json.dumps(data)
+        if row:
+            row.value = val
+        else:
+            db.add(AppSetting(key="role_permissions", value=val))
+        db.commit()
+    finally:
+        db.close()
+    return data
 
 @app.delete("/api/admin/logo")
 def delete_logo(current_user: User = Depends(require_roles("admin"))):

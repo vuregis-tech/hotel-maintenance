@@ -34,7 +34,7 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 }
 
 export default function Layout({ children }) {
-  const { user, signOut, mustChangePassword, clearMustChangePassword } = useAuth()
+  const { user, signOut, mustChangePassword, clearMustChangePassword, hasPermission } = useAuth()
   const { t } = useLang()
   const [logoUrl, setLogoUrl] = useState(null)
 
@@ -74,13 +74,13 @@ export default function Layout({ children }) {
   }
 
   const navItems = [
-    { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/new-request', icon: PlusCircle, labelKey: 'nav.newRequest', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/requests', icon: ClipboardList, labelKey: 'nav.requests', roles: ['admin', 'supervisor', 'technician', 'staff'] },
-    { to: '/onduty', icon: CalendarCheck, labelKey: 'nav.onDuty', roles: ['admin', 'supervisor', 'technician'] },
-    { to: '/reports', icon: BarChart2, labelKey: 'nav.reports', roles: ['admin', 'supervisor'] },
-    { to: '/admin', icon: Settings, labelKey: 'nav.admin', roles: ['admin'] },
-  ].filter(item => item.roles.includes(user?.role))
+    { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', permission: 'view_dashboard' },
+    { to: '/new-request', icon: PlusCircle, labelKey: 'nav.newRequest', permission: 'create_request' },
+    { to: '/requests', icon: ClipboardList, labelKey: 'nav.requests', permission: 'view_all_requests' },
+    { to: '/onduty', icon: CalendarCheck, labelKey: 'nav.onDuty', permission: 'manage_on_duty' },
+    { to: '/reports', icon: BarChart2, labelKey: 'nav.reports', permission: 'view_reports' },
+    { to: '/admin', icon: Settings, labelKey: 'nav.admin', permission: 'manage_settings' },
+  ].filter(item => hasPermission(item.permission))
 
   const Sidebar = () => (
     <div className="flex flex-col h-full">
@@ -181,6 +181,11 @@ export default function Layout({ children }) {
             <img src={logoUrl} alt="logo" className="ml-auto h-[50px] w-auto object-contain" />
           )}
         </header>
+
+        {/* Dev banner */}
+        <div className="bg-amber-400 text-amber-900 text-center text-xs font-bold py-1 tracking-widest shrink-0">
+          ⚠ User Testing Version ⚠
+        </div>
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
