@@ -541,7 +541,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`
   }
 
-  const wo = job?.work_orders?.find(w => ['assigned','in_progress','completed','external'].includes(w.status)) || job?.work_orders?.[0]
+  const wo = activeWorkOrder(job)
   const latestInspection = job?.inspections?.slice(-1)[0]
 
   const isSuperAdmin = ['admin','supervisor'].includes(user?.role)
@@ -557,7 +557,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   const canCancel   = job && job.status === 'pending' && (user?.role === 'admin' || job.reporter?.id === user?.id)
   const canReject   = job && isMyWO && job.status === 'assigned'
   const canTransfer = job && (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)
-  const canSelfAssign = job && user?.role === 'technician' && job.status === 'pending'
+  const canSelfAssign = job && user?.role === 'technician' && ['pending', 'reopened'].includes(job.status)
   const canEdit = job && (
     (job.status === 'pending') ||
     (job.status === 'assigned' && !wo?.accepted_at)

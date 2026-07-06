@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import desc, or_, and_
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os, uuid
 
 from ..database import get_db
@@ -367,10 +367,9 @@ def recall_job(job_id: int, data: RecallBody,
 def self_assign(job_id: int,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
-    """ช่าง On Duty รับงาน pending ได้เลยโดยไม่ต้องให้หัวหน้า assign"""
+    """ช่าง On Duty รับงาน pending หรือ reopened ได้เลยโดยไม่ต้องให้หัวหน้า assign"""
     if current_user.role not in ("technician", "supervisor", "admin"):
         raise HTTPException(status_code=403, detail="เฉพาะช่างเท่านั้น")
-    from datetime import date
     today = date.today().isoformat()
     on_duty = (db.query(OnDutySchedule)
                .filter(OnDutySchedule.technician_id == current_user.id,
@@ -380,17 +379,28 @@ def self_assign(job_id: int,
     req = get_req(db, job_id)
     if not req:
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
-    if req.status != "pending":
-        raise HTTPException(status_code=400, detail="รับได้เฉพาะงานที่ยังรอรับงานเท่านั้น")
-    wo = WorkOrder(request_id=job_id, technician_id=current_user.id,
-                   assigned_by_id=current_user.id, status="in_progress",
-                   accepted_at=datetime.now())
-    db.add(wo)
+    if req.status not in ("pending", "reopened"):
+        raise HTTPException(status_code=400, detail="รับได้เฉพาะงานที่รอรับงานหรือส่งซ่อมใหม่เท่านั้น")
+    old_status = req.status
+    old_wo = (db.query(WorkOrder)
+              .filter(WorkOrder.request_id == job_id,
+                      WorkOrder.status.in_(["assigned", "in_progress"]))
+              .first())
+    if old_wo:
+        old_wo.status = "cancelled"
+    note = f"ช่าง On Duty {current_user.full_name} รับงานเอง"
+    new_wo = WorkOrder(request_id=job_id, technician_id=current_user.id,
+                       assigned_by_id=current_user.id, status="in_progress",
+                       accepted_at=datetime.now())
+    db.add(new_wo)
     req.status = "in_progress"
-    add_history(db, job_id, "pending", "in_progress", current_user.id,
-                f"ช่าง On Duty {current_user.full_name} รับงานเอง")
+    add_history(db, job_id, old_status, "in_progress", current_user.id, note)
     db.commit()
-    return get_req(db, job_id)
+    result = get_req(db, job_id)
+    notify_status_change(result, old_status, "in_progress", current_user, note,
+                         tag_user=result.reporter,
+                         title="🔧 <b>IN PROGRESS</b>")
+    return result
 
 
 # ── Reject (ช่างปฏิเสธงาน) ───────────────────────────
@@ -686,9 +696,10 @@ def inspect_work(job_id: int, data: InspectionCreate,
                     f"ตรวจไม่ผ่าน: {data.notes or ''}")
     db.commit()
     result = get_req(db, job_id)
+    supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
+    sorted_wos = sorted(result.work_orders, key=lambda w: w.id, reverse=True)
     if data.result == "pass":
-        supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
-        wo_done = next((w for w in result.work_orders if w.status == "completed"), None)
+        wo_done = next((w for w in sorted_wos if w.status == "completed"), None)
         assigned_tech = wo_done.technician if wo_done else None
         tech_tags = [u for u in ([assigned_tech] + supervisors) if u]
         notify_status_change(result, old_status, "completed", current_user,
@@ -697,12 +708,12 @@ def inspect_work(job_id: int, data: InspectionCreate,
                              title="✅ <b>COMPLETED</b>",
                              tech_tag_users=tech_tags)  # 🔔
     else:
-        supervisors_fail = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
-        wo_fail = next((w for w in result.work_orders if w.status == "completed"), None)
+        wo_fail = next((w for w in sorted_wos if w.status == "completed"), None)
         assigned_tech_fail = wo_fail.technician if wo_fail else None
-        tech_tags_fail = [u for u in ([assigned_tech_fail] + supervisors_fail) if u]
+        tech_tags_fail = [u for u in ([assigned_tech_fail] + supervisors) if u]
         notify_status_change(result, old_status, "reopened", current_user,
                              f"ตรวจไม่ผ่าน: {data.notes or ''}",
+                             tag_user=result.reporter,
                              title="❌ <b>FAIL INSPECT</b>",
                              tech_tag_users=tech_tags_fail)  # 🔔
     return result
