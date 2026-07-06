@@ -77,7 +77,7 @@ export default {
     loginSuccess: 'Logged in successfully',
     usernamePlaceholder: 'Enter username',
     passwordPlaceholder: 'Enter password',
-    systemName: 'Maintenance System',
+    systemName: 'Work Order',
     hotelMaintenance: 'Work Order',
     changePassword: 'Change Password',
     oldPassword: 'Current Password',
