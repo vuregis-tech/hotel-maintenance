@@ -301,6 +301,11 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, modal])
 
+  function applyUpdate(updated) {
+    setJob(updated)
+    onUpdate?.(updated)
+  }
+
   async function handleAssign(type) {
     if (!selectedTech) return toast.error(t('workOrder.selectTech'))
     setActing(true)
@@ -308,7 +313,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       let updated
       if (type === 'reassign') updated = await api.reassignJob(job.id, Number(selectedTech))
       else updated = await api.coAssignJob(job.id, Number(selectedTech))
-      setJob(updated); setModal(null); setSelectedTech('')
+      applyUpdate(updated); setModal(null); setSelectedTech('')
       toast.success(type === 'reassign' ? t('workOrder.toast.reassignSuccess') : t('workOrder.toast.coAssignSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -322,7 +327,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       for (let i = 1; i < selectedTechs.length; i++) {
         updated = await api.coAssignJob(job.id, Number(selectedTechs[i]))
       }
-      setJob(updated); setModal(null); setSelectedTechs([])
+      applyUpdate(updated); setModal(null); setSelectedTechs([])
       toast.success(`${t('workOrder.toast.assignSuccess')}${selectedTechs.length > 1 ? ` (${selectedTechs.length})` : ''}`)
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -336,7 +341,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       for (const techId of selectedTechs) {
         updated = await api.coAssignJob(job.id, Number(techId))
       }
-      setJob(updated); setModal(null); setSelectedTechs([])
+      applyUpdate(updated); setModal(null); setSelectedTechs([])
       toast.success(`${t('workOrder.toast.coAssignSuccess')} (${selectedTechs.length})`)
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -346,7 +351,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setActing(true)
     try {
       const updated = await api.acceptJob(job.id)
-      setJob(updated); setModal(null)
+      applyUpdate(updated); setModal(null)
       toast.success(t('workOrder.toast.acceptSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -374,7 +379,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
         external_note: completeForm.is_external ? completeForm.external_note : null,
         is_complete: completeForm.is_complete,
       })
-      setJob(updated); setModal(null)
+      applyUpdate(updated); setModal(null)
       if (!completeForm.is_complete) toast.success(t('workOrder.toast.savedProgress'))
       else if (completeForm.is_external) toast.success(t('workOrder.toast.externalLogged'))
       else toast.success(t('workOrder.toast.repairLogged'))
@@ -392,7 +397,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       payload.scheduled_at = schedToISO(editForm.sched_date, editForm.sched_hour, editForm.sched_minute)
       payload.guest_inhouse = editForm.guest_inhouse
       const updated = await api.editJob(job.id, payload)
-      setJob(updated); setModal(null)
+      applyUpdate(updated); setModal(null)
       toast.success(t('workOrder.toast.editSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -457,14 +462,14 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
             )
           )
           const final = await api.getJob(job.id)
-          setJob(final)
+          applyUpdate(final)
         } else {
-          setJob(updated)
+          applyUpdate(updated)
         }
         inspectMedia.forEach(item => URL.revokeObjectURL(item.preview))
         setInspectMedia([])
       } else {
-        setJob(updated)
+        applyUpdate(updated)
       }
       setModal(null)
       toast.success(inspectForm.result === 'pass' ? t('workOrder.toast.inspectPassSuccess') : t('workOrder.toast.inspectFailSuccess'))
@@ -475,7 +480,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   async function handleRemoveCo(coId) {
     try {
       const updated = await api.removeCoAssign(job.id, coId)
-      setJob(updated); toast.success(t('workOrder.toast.removeCoSuccess'))
+      applyUpdate(updated); toast.success(t('workOrder.toast.removeCoSuccess'))
     } catch (err) { toast.error(err.message) }
   }
 
@@ -483,7 +488,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setActing(true)
     try {
       const updated = await api.recallJob(job.id, newTechId ? Number(newTechId) : null)
-      setJob(updated); setModal(null); setSelectedTech('')
+      applyUpdate(updated); setModal(null); setSelectedTech('')
       toast.success(newTechId ? t('workOrder.toast.recallReassignSuccess') : t('workOrder.toast.recallSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -492,7 +497,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   async function handleCancel() {
     if (!confirm(t('workOrder.cancelConfirm'))) return
     try {
-      const u = await api.cancelJob(job.id); setJob(u)
+      const u = await api.cancelJob(job.id); applyUpdate(u)
       toast.success(t('workOrder.toast.cancelSuccess'))
     } catch (err) { toast.error(err.message) }
   }
@@ -502,7 +507,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setActing(true)
     try {
       const updated = await api.rejectJob(job.id, reason)
-      setJob(updated); setModal(null)
+      applyUpdate(updated); setModal(null)
       toast.success(t('workOrder.toast.rejectSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -513,7 +518,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setActing(true)
     try {
       const updated = await api.transferJob(job.id, Number(techId), note)
-      setJob(updated); setModal(null); setSelectedTech('')
+      applyUpdate(updated); setModal(null); setSelectedTech('')
       toast.success(t('workOrder.toast.transferSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
@@ -523,7 +528,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     setActing(true)
     try {
       const updated = await api.selfAssignJob(job.id)
-      setJob(updated); toast.success(t('workOrder.toast.selfAssignSuccess'))
+      applyUpdate(updated); toast.success(t('workOrder.toast.selfAssignSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
   }

@@ -348,9 +348,9 @@ export default function DashboardPage() {
 
       {selectedJobId && (
         <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)}
-          onUpdate={updated => {
-            setJobs(prev => prev.map(j => j.id === updated.id ? updated : j))
-            setCompletedToday(prev => prev.map(j => j.id === updated.id ? updated : j))
+          onUpdate={() => {
+            api.getJobs({ limit: 1000 }).then(setJobs).catch(() => {})
+            api.getCompletedToday().then(setCompletedToday).catch(() => {})
           }} />
       )}
     </>
