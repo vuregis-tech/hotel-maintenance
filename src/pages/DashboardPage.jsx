@@ -90,10 +90,16 @@ export default function DashboardPage() {
   const deptRef = useRef(null)
 
   useEffect(() => {
-    api.getJobs({ limit: 1000 }).then(setJobs).finally(() => setLoading(false))
-    api.getCompletedToday().then(setCompletedToday).catch(() => setCompletedToday([]))
-    api.getDepartments().then(setDepartments).catch(() => {})
-    api.getSLASettings().then(setSlaSettings).catch(() => {})
+    let cancelled = false
+    api.getDepartments().then(d => { if (!cancelled) setDepartments(d) }).catch(() => {})
+    api.getSLASettings().then(d => { if (!cancelled) setSlaSettings(d) }).catch(() => {})
+    function refresh() {
+      api.getJobs({ limit: 1000 }).then(d => { if (!cancelled) setJobs(d) }).finally(() => { if (!cancelled) setLoading(false) })
+      api.getCompletedToday().then(d => { if (!cancelled) setCompletedToday(d) }).catch(() => { if (!cancelled) setCompletedToday([]) })
+    }
+    refresh()
+    const id = setInterval(() => { if (!cancelled && document.visibilityState === 'visible') refresh() }, 30000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [])
 
   useEffect(() => {

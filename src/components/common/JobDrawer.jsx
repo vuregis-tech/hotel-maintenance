@@ -262,8 +262,14 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
 
   useEffect(() => {
     if (!jobId) return
+    let cancelled = false
     setLoading(true); setJob(null)
-    api.getJob(jobId).then(setJob).finally(() => setLoading(false))
+    function refresh() {
+      api.getJob(jobId).then(d => { if (!cancelled) setJob(d) }).finally(() => { if (!cancelled) setLoading(false) })
+    }
+    refresh()
+    const id = setInterval(() => { if (!cancelled && document.visibilityState === 'visible') refresh() }, 30000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [jobId])
 
   useEffect(() => {

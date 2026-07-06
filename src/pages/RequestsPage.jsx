@@ -55,10 +55,14 @@ export default function RequestsPage() {
     let cancelled = false
     setLoading(true)
     setPage(1)
-    api.getJobs({ status: filterStatus || undefined, limit: 1000 })
-      .then(data => { if (!cancelled) setJobs(data) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    function refresh() {
+      api.getJobs({ status: filterStatus || undefined, limit: 1000 })
+        .then(data => { if (!cancelled) setJobs(data) })
+        .finally(() => { if (!cancelled) setLoading(false) })
+    }
+    refresh()
+    const id = setInterval(() => { if (!cancelled && document.visibilityState === 'visible') refresh() }, 30000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [filterStatus])
 
   // Reset page when search changes
