@@ -277,6 +277,44 @@ def notify_status_change(request, old_status: str, new_status: str, changed_by,
             _send_bg(s.TELEGRAM_BOT_TOKEN, tech_target, text_tech)
 
 
+def notify_sla_breach(request, on_shift_techs, alert_num: int = 1):
+    """แจ้งเตือน: งานค้างเกิน SLA — ยังไม่มีใครรับงาน ส่งไปกลุ่ม Technician + tag ช่างที่ on shift"""
+    s = _get_settings()
+    if not s.TELEGRAM_BOT_TOKEN:
+        return
+
+    priority_th = {
+        'normal':     'ปกติ',
+        'urgent':     '⚠️ ด่วน',
+        'very_urgent': '🔴 ด่วนมาก',
+    }.get(getattr(request, 'priority', 'normal'), 'ปกติ')
+
+    alert_label = "⏰ <b>SLA Alert</b>" if alert_num == 1 else "🚨 <b>SLA Second Alert</b>"
+    issue = request.issue_type.name if request.issue_type else (request.other_issue or "-")
+    link = f"{_app_base_url()}/requests/{request.id}"
+
+    body = (
+        f"{alert_label}  |  {request.request_number}\n"
+        f"─────────────────────\n"
+        f"📍 <b>พื้นที่:</b> {_location(request)}\n"
+        f"🔧 <b>ประเภท:</b> {issue}\n"
+        f"📝 <b>รายละเอียด:</b> {request.description}\n"
+        f"📊 <b>ความสำคัญ:</b> {priority_th}\n"
+        f"⚠️ <b>ยังไม่มีช่างรับงาน</b>\n"
+        f"─────────────────────\n"
+    )
+
+    if on_shift_techs:
+        mentions = " ".join(_mention(u) for u in on_shift_techs)
+        body += f"🔔 {mentions}\n"
+
+    text = body + f"🔗 <a href=\"{link}\">ดูรายละเอียดงาน</a>\n."
+
+    tech_target = _targets(s.TELEGRAM_GROUP_TECHNICIAN)
+    if tech_target:
+        _send_bg(s.TELEGRAM_BOT_TOKEN, tech_target, text)
+
+
 def send_daily_summary():
     """ส่งรายงานประจำวัน — เรียกโดย APScheduler ทุก 00:00 UTC (07:00 BKK)"""
     from datetime import datetime, timedelta

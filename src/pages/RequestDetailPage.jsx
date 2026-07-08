@@ -244,7 +244,7 @@ export default function RequestDetailPage() {
       if (technicians.length === 0) {
         api.getTechnicians().then(setTechnicians).catch(() => {})
         api.getOnDutyToday()
-          .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
+          .then(duty => setOnDutyTechs(duty?.technician_ids ?? []))
           .catch(() => setOnDutyTechs([]))
       }
       api.getTechWorkload().then(setTechWorkload).catch(() => {})

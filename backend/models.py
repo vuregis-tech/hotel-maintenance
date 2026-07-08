@@ -93,6 +93,8 @@ class MaintenanceRequest(Base):
     status = Column(String(30), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    sla_alerted_at = Column(DateTime(timezone=True), nullable=True)
+    sla_second_alerted_at = Column(DateTime(timezone=True), nullable=True)
 
     reporter = relationship("User", foreign_keys=[reporter_id], back_populates="reported_requests")
     last_edited_by = relationship("User", foreign_keys=[last_edited_by_id])
@@ -129,7 +131,7 @@ class Department(Base):
 
 
 class OnDutySchedule(Base):
-    """ตารางช่าง On Duty รายวัน"""
+    """ตารางช่าง On Duty รายวัน (legacy — ถูกแทนที่ด้วย Shift)"""
     __tablename__ = "on_duty_schedules"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -138,6 +140,38 @@ class OnDutySchedule(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    technician = relationship("User", foreign_keys=[technician_id], overlaps="created_by")
+    created_by = relationship("User", foreign_keys=[created_by_id], overlaps="technician")
+
+
+class Shift(Base):
+    """ประเภท Shift การทำงาน"""
+    __tablename__ = "shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    start_time = Column(String(5), nullable=False)   # "HH:MM"
+    end_time = Column(String(5), nullable=False)     # "HH:MM"
+    color = Column(String(20), default="#3B82F6")    # hex color for display
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    assignments = relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
+
+
+class ShiftAssignment(Base):
+    """การ assign ช่างเข้า Shift"""
+    __tablename__ = "shift_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    technician_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assignment_date = Column(String(10), nullable=False)  # "YYYY-MM-DD" (start date of shift)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    shift = relationship("Shift", back_populates="assignments")
     technician = relationship("User", foreign_keys=[technician_id], overlaps="created_by")
     created_by = relationship("User", foreign_keys=[created_by_id], overlaps="technician")
 

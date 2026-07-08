@@ -261,6 +261,55 @@ class OnDutyOut(BaseModel):
         from_attributes = True
 
 
+# ── Shifts ────────────────────────────────────────────
+class ShiftCreate(BaseModel):
+    name: str
+    start_time: str   # "HH:MM"
+    end_time: str     # "HH:MM"
+    color: Optional[str] = "#3B82F6"
+    sort_order: Optional[int] = 0
+
+
+class ShiftUpdate(BaseModel):
+    name: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    color: Optional[str] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class ShiftOut(BaseModel):
+    id: int
+    name: str
+    start_time: str
+    end_time: str
+    color: str
+    is_active: bool
+    sort_order: int
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftAssignmentOut(BaseModel):
+    id: int
+    shift: ShiftOut
+    technician: Optional[UserOut]
+    assignment_date: str
+    created_by: Optional[UserOut]
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftAssignmentBulkCreate(BaseModel):
+    shift_id: int
+    technician_ids: List[int]
+    date_from: str   # "YYYY-MM-DD"
+    date_to: str     # "YYYY-MM-DD"
+
+
 # ── Inspections ───────────────────────────────────────
 class InspectionCreate(BaseModel):
     result: str  # pass or fail

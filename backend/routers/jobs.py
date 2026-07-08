@@ -8,7 +8,8 @@ import os, uuid
 
 from ..database import get_db
 from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
-                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule, RepairLog, Department)
+                      Inspection, InspectionImage, RequestHistory, User, OnDutySchedule, RepairLog, Department,
+                      Shift, ShiftAssignment)
 from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
@@ -18,6 +19,41 @@ from ..services.notification import notify_new_request, notify_status_change, no
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
+
+
+def _is_on_shift_now(db, technician_id: int) -> bool:
+    """ตรวจว่าช่างกำลัง on shift อยู่ตอนนี้ไหม (รองรับ shift ข้ามวัน)"""
+    now = datetime.now()
+    today_str = now.date().isoformat()
+    yesterday_str = (now.date() - timedelta(days=1)).isoformat()
+    current_time = now.strftime("%H:%M")
+    shifts = db.query(Shift).filter(Shift.is_active == True).all()
+    for shift in shifts:
+        is_overnight = shift.end_time <= shift.start_time
+        if is_overnight:
+            if current_time < shift.end_time:
+                if db.query(ShiftAssignment).filter(
+                    ShiftAssignment.shift_id == shift.id,
+                    ShiftAssignment.technician_id == technician_id,
+                    ShiftAssignment.assignment_date == yesterday_str
+                ).first():
+                    return True
+            if current_time >= shift.start_time:
+                if db.query(ShiftAssignment).filter(
+                    ShiftAssignment.shift_id == shift.id,
+                    ShiftAssignment.technician_id == technician_id,
+                    ShiftAssignment.assignment_date == today_str
+                ).first():
+                    return True
+        else:
+            if shift.start_time <= current_time < shift.end_time:
+                if db.query(ShiftAssignment).filter(
+                    ShiftAssignment.shift_id == shift.id,
+                    ShiftAssignment.technician_id == technician_id,
+                    ShiftAssignment.assignment_date == today_str
+                ).first():
+                    return True
+    return False
 
 
 def gen_request_number(db):
@@ -354,6 +390,8 @@ def recall_job(job_id: int, data: RecallBody,
     else:
         # กลับไป pending รอจ่ายงานใหม่
         req.status = "pending"
+        req.sla_alerted_at = None
+        req.sla_second_alerted_at = None
         note = f"ดึงงานกลับจาก {recalled_tech_name}"
         add_history(db, job_id, old_status, "pending", current_user.id, note)
 
@@ -370,12 +408,8 @@ def self_assign(job_id: int,
     """ช่าง On Duty รับงาน pending หรือ reopened ได้เลยโดยไม่ต้องให้หัวหน้า assign"""
     if current_user.role not in ("technician", "supervisor", "admin"):
         raise HTTPException(status_code=403, detail="เฉพาะช่างเท่านั้น")
-    today = date.today().isoformat()
-    on_duty = (db.query(OnDutySchedule)
-               .filter(OnDutySchedule.technician_id == current_user.id,
-                       OnDutySchedule.duty_date == today).first())
-    if not on_duty and current_user.role == "technician":
-        raise HTTPException(status_code=403, detail="คุณไม่ได้อยู่ใน On Duty วันนี้")
+    if current_user.role == "technician" and not _is_on_shift_now(db, current_user.id):
+        raise HTTPException(status_code=403, detail="คุณไม่ได้อยู่ใน Shift ที่กำลังทำงานอยู่")
     req = get_req(db, job_id)
     if not req:
         raise HTTPException(status_code=404, detail="ไม่พบงาน")
@@ -424,6 +458,8 @@ def reject_job(job_id: int, data: RejectBody,
     wo.rejected_at = datetime.now()
     old_status = req.status
     req.status = "pending"
+    req.sla_alerted_at = None
+    req.sla_second_alerted_at = None
     add_history(db, job_id, old_status, "pending", current_user.id,
                 f"ช่าง {current_user.full_name} ปฏิเสธงาน: {data.reason}")
     db.commit()
@@ -692,6 +728,8 @@ def inspect_work(job_id: int, data: InspectionCreate,
         add_history(db, job_id, old_status, "completed", current_user.id, data.notes)
     else:
         req.status = "reopened"
+        req.sla_alerted_at = None
+        req.sla_second_alerted_at = None
         add_history(db, job_id, old_status, "reopened", current_user.id,
                     f"ตรวจไม่ผ่าน: {data.notes or ''}")
     db.commit()

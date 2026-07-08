@@ -14,7 +14,7 @@ from fastapi import Depends, HTTPException, UploadFile, File
 from .database import SessionLocal
 from .config import get_settings
 from .routers import auth, users, jobs, reports, areas, issue_types
-from .routers import departments, onduty
+from .routers import departments, onduty, shifts
 
 settings = get_settings()
 
@@ -221,6 +221,9 @@ def run_migrations():
         ("users", "telegram_username", "VARCHAR(100)"),
         # Department: แผนกที่รับงานได้
         ("departments", "can_receive_jobs", "BOOLEAN DEFAULT FALSE"),
+        # SLA breach alert tracking
+        ("maintenance_requests", "sla_alerted_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+        ("maintenance_requests", "sla_second_alerted_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:
@@ -232,6 +235,105 @@ def run_migrations():
                 conn.commit()
             except Exception:
                 conn.rollback()
+
+
+async def check_sla_alerts():
+    """ตรวจสอบ SLA breach ทุก 1 นาที — ส่ง Telegram ถ้างานค้างเกิน threshold"""
+    from datetime import datetime, timezone as _tz, timedelta
+    from .models import MaintenanceRequest, Shift, ShiftAssignment, RequestHistory, User as _User
+    from .services.notification import notify_sla_breach
+    db = SessionLocal()
+    try:
+        now = datetime.now(tz=_tz.utc)
+        now_local = datetime.now()  # local time for shift comparison
+        today_str = now_local.strftime("%Y-%m-%d")
+        yesterday_str = (now_local.date() - timedelta(days=1)).strftime("%Y-%m-%d")
+        current_time = now_local.strftime("%H:%M")
+
+        # ── load SLA thresholds ──────────────────────────────
+        def _mins(key):
+            row = db.query(AppSetting).filter(AppSetting.key == f"sla_{key}").first()
+            return int(row.value) if row and row.value else None
+
+        thresholds = {
+            p: (_mins(p), _mins(f"{p}_second"))
+            for p in ["normal", "urgent", "very_urgent"]
+        }
+
+        # ── on-shift technicians right now ───────────────────
+        active_shifts = db.query(Shift).filter(Shift.is_active == True).all()
+        on_shift_tech_ids = set()
+        for shift in active_shifts:
+            overnight = shift.end_time <= shift.start_time
+            if overnight:
+                if current_time < shift.end_time:
+                    rows = db.query(ShiftAssignment).filter(
+                        ShiftAssignment.shift_id == shift.id,
+                        ShiftAssignment.assignment_date == yesterday_str).all()
+                    on_shift_tech_ids.update(r.technician_id for r in rows)
+                if current_time >= shift.start_time:
+                    rows = db.query(ShiftAssignment).filter(
+                        ShiftAssignment.shift_id == shift.id,
+                        ShiftAssignment.assignment_date == today_str).all()
+                    on_shift_tech_ids.update(r.technician_id for r in rows)
+            else:
+                if shift.start_time <= current_time < shift.end_time:
+                    rows = db.query(ShiftAssignment).filter(
+                        ShiftAssignment.shift_id == shift.id,
+                        ShiftAssignment.assignment_date == today_str).all()
+                    on_shift_tech_ids.update(r.technician_id for r in rows)
+
+        on_shift_techs = []
+        if on_shift_tech_ids:
+            on_shift_techs = db.query(_User).filter(
+                _User.id.in_(on_shift_tech_ids), _User.is_active == True).all()
+
+        # ── check each pending/reopened job ──────────────────
+        jobs = db.query(MaintenanceRequest).filter(
+            MaintenanceRequest.status.in_(["pending", "reopened"])
+        ).all()
+
+        for req in jobs:
+            first_thresh, second_thresh = thresholds.get(req.priority or "normal", (None, None))
+            if not first_thresh and not second_thresh:
+                continue
+
+            # Determine clock start: created_at for pending, last reopen timestamp for reopened
+            if req.status == "reopened":
+                last_reopen = (db.query(RequestHistory)
+                               .filter(RequestHistory.request_id == req.id,
+                                       RequestHistory.new_status == "reopened")
+                               .order_by(RequestHistory.timestamp.desc())
+                               .first())
+                clock_start = last_reopen.timestamp if last_reopen else req.created_at
+            else:
+                clock_start = req.created_at
+
+            if clock_start is None:
+                continue
+            if clock_start.tzinfo is None:
+                clock_start = clock_start.replace(tzinfo=_tz.utc)
+
+            elapsed = (now - clock_start).total_seconds() / 60  # minutes
+
+            # First alert
+            if first_thresh and elapsed >= first_thresh and req.sla_alerted_at is None:
+                notify_sla_breach(req, on_shift_techs, alert_num=1)
+                req.sla_alerted_at = now
+                db.commit()
+
+            # Second alert — elif prevents both firing in the same scheduler tick
+            elif (second_thresh and elapsed >= second_thresh
+                    and req.sla_second_alerted_at is None
+                    and (req.sla_alerted_at is not None or not first_thresh)):
+                notify_sla_breach(req, on_shift_techs, alert_num=2)
+                req.sla_second_alerted_at = now
+                db.commit()
+
+    except Exception as e:
+        logger.exception("SLA alert check error")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -256,16 +358,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Telegram bot import/start failed: {e}")
         _stop_fn = None
-    # Daily summary scheduler
+    # Schedulers: daily summary + SLA alerts
     scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
         from .services.notification import send_daily_summary
         scheduler = AsyncIOScheduler(timezone="UTC")
         scheduler.add_job(send_daily_summary, CronTrigger(hour=0, minute=0))
+        scheduler.add_job(check_sla_alerts, IntervalTrigger(minutes=1))
         scheduler.start()
-        logger.info("Daily summary scheduler started ✓")
+        logger.info("Schedulers started ✓ (daily summary + SLA alerts every 1 min)")
     except Exception as e:
         logger.warning(f"Scheduler start failed: {e}")
 
@@ -299,6 +403,7 @@ app.include_router(areas.router)
 app.include_router(issue_types.router)
 app.include_router(departments.router)
 app.include_router(onduty.router)
+app.include_router(shifts.router)
 
 
 @app.post("/api/admin/reseed-config")
@@ -471,16 +576,21 @@ from pydantic import BaseModel as _BaseModel
 from typing import Optional as _Optional
 
 class SLASettings(_BaseModel):
-    normal: _Optional[int] = None       # minutes, None = infinite
+    normal: _Optional[int] = None           # minutes, None = infinite
     urgent: _Optional[int] = None
     very_urgent: _Optional[int] = None
+    normal_second: _Optional[int] = None    # second alert minutes
+    urgent_second: _Optional[int] = None
+    very_urgent_second: _Optional[int] = None
+
+_SLA_KEYS = ["normal", "urgent", "very_urgent", "normal_second", "urgent_second", "very_urgent_second"]
 
 @app.get("/api/admin/sla")
 def get_sla(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         result = {}
-        for p in ["normal", "urgent", "very_urgent"]:
+        for p in _SLA_KEYS:
             row = db.query(AppSetting).filter(AppSetting.key == f"sla_{p}").first()
             result[p] = int(row.value) if row and row.value else None
         return result
@@ -491,8 +601,8 @@ def get_sla(current_user: User = Depends(get_current_user)):
 def update_sla(data: SLASettings, current_user: User = Depends(require_roles("admin"))):
     db = SessionLocal()
     try:
-        for p in ["normal", "urgent", "very_urgent"]:
-            val = getattr(data, p)
+        for p in _SLA_KEYS:
+            val = getattr(data, p, None)
             row = db.query(AppSetting).filter(AppSetting.key == f"sla_{p}").first()
             new_val = str(val) if val is not None else ""
             if row:

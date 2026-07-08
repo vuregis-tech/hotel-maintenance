@@ -142,12 +142,14 @@ export const api = {
   updateDepartment: (id, data) => request('PUT', `/api/departments/${id}`, data),
   deleteDepartment: (id) => request('DELETE', `/api/departments/${id}`),
 
-  // On-Duty
-  getOnDuty: (date) => request('GET', `/api/onduty${date ? `?duty_date=${date}` : ''}`),
-  getOnDutyMonth: (year, month) => request('GET', `/api/onduty/month?year=${year}&month=${month}`),
-  setOnDuty: (data) => request('POST', '/api/onduty', data),
-  removeOnDuty: (id) => request('DELETE', `/api/onduty/${id}`),
-  amIOnDuty: () => request('GET', '/api/onduty/me/today'),
+  // Shifts
+  getShifts: () => request('GET', '/api/shifts'),
+  createShift: (data) => request('POST', '/api/shifts', data),
+  updateShift: (id, data) => request('PUT', `/api/shifts/${id}`, data),
+  deleteShift: (id) => request('DELETE', `/api/shifts/${id}`),
+  getShiftAssignments: (year, month) => request('GET', `/api/shifts/assignments?year=${year}&month=${month}`),
+  bulkCreateAssignments: (data) => request('POST', '/api/shifts/assignments/bulk', data),
+  deleteShiftAssignment: (id) => request('DELETE', `/api/shifts/assignments/${id}`),
 
   // Job actions (new)
   selfAssignJob: (id) => request('POST', `/api/jobs/${id}/self-assign`),
@@ -155,8 +157,8 @@ export const api = {
   transferJob: (id, technicianId, note) => request('POST', `/api/jobs/${id}/transfer`, { technician_id: technicianId, note }),
   editJob: (id, data) => request('PUT', `/api/jobs/${id}/edit`, data),
 
-  // On-duty today (convenience)
-  getOnDutyToday: () => request('GET', '/api/onduty'),
+  // On-duty today — now returns {technician_ids: [...]} from shift system
+  getOnDutyToday: () => request('GET', '/api/shifts/on-duty-now'),
 
   // SLA
   getSLASettings: () => request('GET', '/api/admin/sla'),
