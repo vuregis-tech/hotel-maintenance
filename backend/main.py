@@ -240,12 +240,16 @@ def run_migrations():
 async def check_sla_alerts():
     """ตรวจสอบ SLA breach ทุก 1 นาที — ส่ง Telegram ถ้างานค้างเกิน threshold"""
     from datetime import datetime, timezone as _tz, timedelta
-    from .models import MaintenanceRequest, Shift, ShiftAssignment, RequestHistory, User as _User
+    from .models import MaintenanceRequest, Shift, ShiftAssignment, OnDutySchedule, RequestHistory, User as _User
     from .services.notification import notify_sla_breach
     db = SessionLocal()
     try:
         now = datetime.now(tz=_tz.utc)
-        now_local = datetime.now()  # local time for shift comparison
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            now_local = datetime.now(_ZI('Asia/Bangkok'))
+        except Exception:
+            now_local = datetime.utcnow() + timedelta(hours=7)
         today_str = now_local.strftime("%Y-%m-%d")
         yesterday_str = (now_local.date() - timedelta(days=1)).strftime("%Y-%m-%d")
         current_time = now_local.strftime("%H:%M")
@@ -263,6 +267,12 @@ async def check_sla_alerts():
         # ── on-shift technicians right now ───────────────────
         active_shifts = db.query(Shift).filter(Shift.is_active == True).all()
         on_shift_tech_ids = set()
+
+        if not active_shifts:
+            # Fallback: ใช้ OnDutySchedule เดิมถ้ายังไม่ได้ config Shift
+            for row in db.query(OnDutySchedule).filter(OnDutySchedule.duty_date == today_str).all():
+                on_shift_tech_ids.add(row.technician_id)
+
         for shift in active_shifts:
             overnight = shift.end_time <= shift.start_time
             if overnight:

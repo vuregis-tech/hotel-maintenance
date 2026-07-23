@@ -21,14 +21,32 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
 
 
+def _bangkok_now():
+    """คืน datetime ในเวลา Bangkok (Asia/Bangkok, UTC+7) เพื่อ compare กับ shift times ที่ admin กรอกไว้"""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo('Asia/Bangkok'))
+    except Exception:
+        return datetime.utcnow() + timedelta(hours=7)
+
+
 def _is_on_shift_now(db, technician_id: int) -> bool:
     """ตรวจว่าช่างกำลัง on shift อยู่ตอนนี้ไหม (รองรับ shift ข้ามวัน)"""
-    now = datetime.now()
-    today_str = now.date().isoformat()
+    now = _bangkok_now()
+    today_str = now.strftime("%Y-%m-%d")
     yesterday_str = (now.date() - timedelta(days=1)).isoformat()
     current_time = now.strftime("%H:%M")
-    shifts = db.query(Shift).filter(Shift.is_active == True).all()
-    for shift in shifts:
+
+    active_shifts = db.query(Shift).filter(Shift.is_active == True).all()
+
+    # Fallback: ถ้ายังไม่ได้ set up Shift system ให้ check old OnDutySchedule แทน
+    if not active_shifts:
+        return db.query(OnDutySchedule).filter(
+            OnDutySchedule.technician_id == technician_id,
+            OnDutySchedule.duty_date == today_str
+        ).first() is not None
+
+    for shift in active_shifts:
         is_overnight = shift.end_time <= shift.start_time
         if is_overnight:
             if current_time < shift.end_time:

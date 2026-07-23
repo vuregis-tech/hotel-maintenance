@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime, timedelta, date as date_type
 
 from ..database import get_db
-from ..models import Shift, ShiftAssignment, User
+from ..models import Shift, ShiftAssignment, OnDutySchedule, User
 from ..schemas import ShiftOut, ShiftCreate, ShiftUpdate, ShiftAssignmentOut, ShiftAssignmentBulkCreate
 from ..auth import get_current_user, require_roles
 
@@ -153,12 +153,24 @@ def delete_assignment(assignment_id: int,
 def get_on_duty_now(db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
     """ช่างที่กำลัง On Shift ตอนนี้ — รองรับ Shift ข้ามวัน"""
-    now = datetime.now()
-    today_str = now.date().isoformat()
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo('Asia/Bangkok'))
+    except Exception:
+        now = datetime.utcnow() + timedelta(hours=7)
+    today_str = now.strftime("%Y-%m-%d")
     yesterday_str = (now.date() - timedelta(days=1)).isoformat()
     current_time = now.strftime("%H:%M")
 
     shifts = db.query(Shift).filter(Shift.is_active == True).all()
+
+    # Fallback: ยังไม่ได้ config Shift ใหม่ → ใช้ OnDutySchedule เดิม
+    if not shifts:
+        rows = db.query(OnDutySchedule).filter(
+            OnDutySchedule.duty_date == today_str
+        ).all()
+        return {"technician_ids": [r.technician_id for r in rows]}
+
     active_ids: set[int] = set()
 
     for shift in shifts:
