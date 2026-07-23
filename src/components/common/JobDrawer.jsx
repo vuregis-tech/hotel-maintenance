@@ -157,7 +157,6 @@ function MaterialsTable({ materials, onChange }) {
                 <th className="text-left px-3 py-2 text-orange-700 font-medium">{t('workOrder.materialName')}</th>
                 <th className="text-right px-3 py-2 text-orange-700 font-medium w-16">{t('workOrder.qty')}</th>
                 <th className="text-left px-3 py-2 text-orange-700 font-medium w-16">{t('workOrder.unit')}</th>
-                <th className="text-right px-3 py-2 text-orange-700 font-medium w-20">{t('workOrder.unitCost')}</th>
                 <th className="px-2 py-2 w-8"></th>
               </tr>
             </thead>
@@ -177,11 +176,6 @@ function MaterialsTable({ materials, onChange }) {
                   <td className="px-2 py-2 w-16">
                     <input value={m.unit} onChange={e => updateRow(i, 'unit', e.target.value)}
                       className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
-                  </td>
-                  <td className="px-2 py-2 w-20">
-                    <input type="number" min="0" step="0.01" value={m.unit_cost ?? 0}
-                      onChange={e => updateRow(i, 'unit_cost', parseFloat(e.target.value) || 0)}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-8">
                     <button onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500 transition-colors">
@@ -277,7 +271,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       if (technicians.length === 0) {
         api.getTechnicians().then(setTechnicians).catch(() => {})
         api.getOnDutyToday()
-          .then(duty => setOnDutyTechs(Array.isArray(duty) ? duty.map(d => d.technician?.id).filter(Boolean) : []))
+          .then(data => setOnDutyTechs(data?.technician_ids ?? []))
           .catch(() => setOnDutyTechs([]))
       }
       api.getTechWorkload().then(setTechWorkload).catch(() => {})
