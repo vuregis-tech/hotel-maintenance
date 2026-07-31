@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 import {
   X, Wrench, CheckCircle, XCircle, Plus, Trash2, Package,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2, Video, Camera, Image as ImageIcon, Timer
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, ArrowUpRight, Edit2, Video, Camera, Image as ImageIcon, Timer, Loader2
 } from 'lucide-react'
 
 function TechCheckList({ technicians, onDutyTechs, selectedTech, setSelectedTech, selectedTechs, setSelectedTechs, multi = false, excludeId = null, techWorkload = {} }) {
@@ -229,10 +229,11 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   const [rejectReason, setRejectReason] = useState('')
   const [transferNote, setTransferNote] = useState('')
   const [completeForm, setCompleteForm] = useState({
-    repair_details: '', materials: [], ooo_room: false,
+    repair_details: '', materials: [], images: [], ooo_room: false,
     ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
     is_external: false, external_note: '', is_complete: false
   })
+  const [repairImgUploading, setRepairImgUploading] = useState(false)
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
   const [inspectMedia, setInspectMedia] = useState([]) // [{file, preview, isVideo}]
   const [showInspectRecorder, setShowInspectRecorder] = useState(false)
@@ -278,7 +279,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     }
     if (modal === 'complete') {
       setCompleteForm({
-        repair_details: '', materials: [], ooo_room: false,
+        repair_details: '', materials: [], images: [], ooo_room: false,
         ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
         is_external: false, external_note: '', is_complete: false
       })
@@ -351,6 +352,17 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     finally { setActing(false) }
   }
 
+  async function handleRepairImgAdd(files) {
+    setRepairImgUploading(true)
+    try {
+      for (const file of files) {
+        const res = await api.uploadRepairLogMedia(job.id, file)
+        setCompleteForm(f => ({ ...f, images: [...f.images, res.url] }))
+      }
+    } catch (err) { toast.error(err.message) }
+    finally { setRepairImgUploading(false) }
+  }
+
   async function handleComplete() {
     if (!completeForm.repair_details.trim()) return toast.error(t('workOrder.toast.repairDetailsRequired'))
     if (completeForm.ooo_room) {
@@ -365,6 +377,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       const updated = await api.completeJob(job.id, {
         repair_details: completeForm.repair_details,
         materials: completeForm.materials.filter(m => m.name),
+        images: completeForm.images.length > 0 ? completeForm.images : null,
         ooo_room: completeForm.ooo_room,
         ooo_start_date: completeForm.ooo_room && completeForm.ooo_start_date ? completeForm.ooo_start_date : null,
         ooo_end_date: completeForm.ooo_room && completeForm.ooo_end_date ? completeForm.ooo_end_date : null,
@@ -837,6 +850,17 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                                 </div>
                               </div>
                               <p className="text-gray-700 whitespace-pre-wrap">{log.repair_details}</p>
+                              {log.images?.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {log.images.map((url, i) => {
+                                    const isVid = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
+                                    return isVid
+                                      ? <video key={i} src={url} controls className="h-20 rounded-lg border border-gray-200 object-cover" />
+                                      : <img key={i} src={url} alt="" onClick={() => window.open(url, '_blank')}
+                                          className="h-20 w-20 rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-80" />
+                                  })}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -995,6 +1019,48 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <MaterialsTable materials={completeForm.materials} onChange={m => setCompleteForm(f => ({ ...f, materials: m }))} />
+
+            {/* รูป/วิดีโอวัสดุ */}
+            <div className="border-2 border-blue-200 rounded-xl overflow-hidden bg-blue-50">
+              <div className="flex items-center justify-between px-3 py-2.5 bg-blue-100 border-b border-blue-200">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  <label className="text-sm font-semibold text-blue-800">{t('workOrder.materialPhotos')}</label>
+                  {completeForm.images.length > 0 && (
+                    <span className="text-xs bg-blue-500 text-white rounded-full px-2 py-0.5 font-medium">{completeForm.images.length}</span>
+                  )}
+                </div>
+                <label className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${repairImgUploading ? 'bg-blue-200 text-blue-400' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+                  {repairImgUploading
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('workOrder.uploadingPhoto')}</>
+                    : <><Plus className="w-3.5 h-3.5" /> {t('workOrder.addPhoto')}</>
+                  }
+                  <input type="file" accept="image/*,video/*" multiple capture="environment"
+                    className="hidden" disabled={repairImgUploading}
+                    onChange={e => e.target.files?.length && handleRepairImgAdd(Array.from(e.target.files))} />
+                </label>
+              </div>
+              {completeForm.images.length === 0 ? (
+                <div className="px-3 py-3 text-xs text-blue-400 text-center">ยังไม่มีรูป — กด "เพิ่มรูป/วิดีโอ" เพื่อแนบ</div>
+              ) : (
+                <div className="p-2 flex flex-wrap gap-2">
+                  {completeForm.images.map((url, i) => {
+                    const isVid = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
+                    return (
+                      <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-blue-200 bg-white">
+                        {isVid
+                          ? <video src={url} className="w-full h-full object-cover" />
+                          : <img src={url} alt="" className="w-full h-full object-cover" />
+                        }
+                        <button onClick={() => setCompleteForm(f => ({ ...f, images: f.images.filter((_, idx) => idx !== i) }))}
+                          className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none">×</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={completeForm.ooo_room}
                 onChange={e => setCompleteForm(f => ({ ...f, ooo_room: e.target.checked }))}

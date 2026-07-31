@@ -233,6 +233,8 @@ class RepairLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+    images = Column(Text, nullable=True)  # JSON list of uploaded URLs
+
     work_order = relationship("WorkOrder", back_populates="repair_logs")
     created_by = relationship("User", foreign_keys=[created_by_id])
 

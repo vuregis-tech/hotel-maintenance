@@ -224,6 +224,8 @@ def run_migrations():
         # SLA breach alert tracking
         ("maintenance_requests", "sla_alerted_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
         ("maintenance_requests", "sla_second_alerted_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+        # Material photos on repair log
+        ("repair_logs", "images", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_type in migrations:

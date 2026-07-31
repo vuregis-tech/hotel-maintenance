@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -146,6 +146,7 @@ class WorkOrderCreate(BaseModel):
 class WorkOrderComplete(BaseModel):
     repair_details: str
     materials: Optional[List[MaterialItem]] = None   # structured list
+    images: Optional[List[str]] = None               # uploaded URLs for material photos
     ooo_room: bool = False
     ooo_days: Optional[int] = None
     ooo_start_date: Optional[str] = None
@@ -185,8 +186,22 @@ class RepairLogOut(BaseModel):
     materials_used: Optional[str] = None
     total_cost: Optional[float] = None
     is_complete: bool = False
+    images: List[str] = []
     created_at: datetime
     created_by: Optional[UserOut] = None
+
+    @field_validator('images', mode='before')
+    @classmethod
+    def parse_images(cls, v):
+        if not v:
+            return []
+        if isinstance(v, list):
+            return v
+        try:
+            import json
+            return json.loads(v)
+        except Exception:
+            return []
 
     class Config:
         from_attributes = True

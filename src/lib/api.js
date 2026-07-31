@@ -110,6 +110,11 @@ export const api = {
     fd.append('file', file)
     return request('POST', `/api/jobs/${id}/videos`, fd, true)
   },
+  uploadRepairLogMedia: (jobId, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request('POST', `/api/jobs/${jobId}/repair-log-images`, fd, true)
+  },
   uploadInspectImage: (id, inspectionId, file) => {
     const fd = new FormData()
     fd.append('file', file)

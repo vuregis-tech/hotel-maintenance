@@ -304,6 +304,33 @@ async def upload_video_file(job_id: int, file: UploadFile = File(...),
     return get_req(db, job_id)
 
 
+# ── Upload Repair-Log Image/Video ─────────────────────
+
+@router.post("/{job_id}/repair-log-images")
+async def upload_repair_log_media(job_id: int, file: UploadFile = File(...),
+                                   db: Session = Depends(get_db),
+                                   current_user: User = Depends(get_current_user)):
+    """อัปโหลดรูป/วิดีโอประกอบวัสดุ — คืน URL เพื่อแนบกับ repair log"""
+    if not get_req(db, job_id):
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    allowed_img = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+    allowed_vid = {".mp4", ".mov", ".webm", ".m4v"}
+    if ext not in allowed_img | allowed_vid:
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์รูปภาพและวิดีโอ")
+    data = await file.read()
+    try:
+        if ext in allowed_vid:
+            if len(data) > 100 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="ไฟล์วิดีโอใหญ่เกินไป (สูงสุด 100MB)")
+            url = storage_upload_video(data, folder="hotel-maintenance", extension=ext)
+        else:
+            url = save_upload(data, ext)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"url": url}
+
+
 # ── Assign ────────────────────────────────────────────
 
 @router.post("/{job_id}/assign", response_model=RequestOut)
@@ -634,6 +661,8 @@ def complete_work(job_id: int, data: WorkOrderComplete,
             [m.model_dump() for m in data.materials], ensure_ascii=False)
         total_cost = sum(m.qty * m.unit_cost for m in data.materials)
 
+    images_json = json.dumps(data.images, ensure_ascii=False) if data.images else None
+
     # บันทึก repair log entry (ไม่ทับของเก่า)
     log = RepairLog(
         work_order_id=wo.id,
@@ -641,6 +670,7 @@ def complete_work(job_id: int, data: WorkOrderComplete,
         materials_used=materials_json,
         total_cost=total_cost if total_cost > 0 else None,
         is_complete=data.is_complete,
+        images=images_json,
         created_by_id=current_user.id,
     )
     db.add(log)
