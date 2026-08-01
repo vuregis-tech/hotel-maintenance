@@ -16,10 +16,6 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./hotel_maintenance.db"
 
-    # Inventory Stock app integration (server-to-server)
-    INVENTORY_API_URL: str = "http://localhost:8001"
-    INVENTORY_API_KEY: str = "inv-wo-integration-key-dev"
-
     # Cloudinary — เก็บรูปภาพถาวร
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

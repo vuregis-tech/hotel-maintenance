@@ -4,14 +4,12 @@ import { api, imgUrl, schedToISO } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
-import InventoryPicker from '../components/common/InventoryPicker'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
 import {
   ArrowLeft, Wrench, CheckCircle, XCircle, Plus, Trash2, Package,
-  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, Edit2,
-  Boxes
+  History, UserPlus, RefreshCw, ExternalLink, Undo2, ImageOff, Edit2
 } from 'lucide-react'
 
 const SCHED_MINUTES = ['00', '15', '30', '45']
@@ -120,21 +118,9 @@ function Modal({ title, onClose, children }) {
 // ── Materials Table ───────────────────────────────────
 function MaterialsTable({ materials, onChange }) {
   const { t } = useLang()
-  const [picking, setPicking] = useState(false)
 
   function addRow() {
     onChange([...materials, { name: '', qty: 1, unit: t('workOrder.defaultUnit'), unit_cost: 0 }])
-  }
-  function addFromInventory(item) {
-    // ถ้า item นี้ถูกเลือกอยู่แล้ว → เพิ่มจำนวนแทนการซ้ำแถว
-    const existing = materials.findIndex(m => m.inventory_item_id === item.inventory_item_id)
-    if (existing >= 0) {
-      const updated = [...materials]
-      updated[existing] = { ...updated[existing], qty: (parseFloat(updated[existing].qty) || 0) + 1 }
-      onChange(updated)
-    } else {
-      onChange([...materials, item])
-    }
   }
   function removeRow(i) {
     onChange(materials.filter((_, idx) => idx !== i))
@@ -155,16 +141,10 @@ function MaterialsTable({ materials, onChange }) {
             <span className="text-xs bg-orange-500 text-white rounded-full px-2 py-0.5 font-medium">{materials.length}</span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => setPicking(true)}
-            className="flex items-center gap-1 text-xs bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors">
-            <Boxes className="w-3.5 h-3.5" /> {t('workOrder.inv.fromStock')}
-          </button>
-          <button type="button" onClick={addRow}
-            className="flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors">
-            <Plus className="w-3.5 h-3.5" /> {t('workOrder.addMaterial')}
-          </button>
-        </div>
+        <button type="button" onClick={addRow}
+          className="flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+          <Plus className="w-3.5 h-3.5" /> {t('workOrder.addMaterial')}
+        </button>
       </div>
       {materials.length === 0 ? (
         <div className="px-3 py-3 text-xs text-orange-400 text-center">{t('workOrder.noMaterials')}</div>
@@ -181,23 +161,12 @@ function MaterialsTable({ materials, onChange }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-orange-100">
-              {materials.map((m, i) => {
-                const fromStock = !!m.inventory_item_id
-                return (
+              {materials.map((m, i) => (
                 <tr key={i} className="bg-white hover:bg-orange-50 transition-colors">
                   <td className="px-3 py-2">
-                    {fromStock ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-                          <Boxes className="w-3 h-3" /> {m.code}
-                        </span>
-                        <span className="text-xs text-gray-800 truncate">{m.name}</span>
-                      </div>
-                    ) : (
-                      <input value={m.name} onChange={e => updateRow(i, 'name', e.target.value)}
-                        placeholder={t('workOrder.materialName')}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
-                    )}
+                    <input value={m.name} onChange={e => updateRow(i, 'name', e.target.value)}
+                      placeholder={t('workOrder.materialName')}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-16">
                     <input type="number" min="0" step="0.1" value={m.qty}
@@ -205,12 +174,8 @@ function MaterialsTable({ materials, onChange }) {
                       className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-16">
-                    {fromStock ? (
-                      <span className="text-xs text-gray-500 px-1">{m.unit}</span>
-                    ) : (
-                      <input value={m.unit} onChange={e => updateRow(i, 'unit', e.target.value)}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
-                    )}
+                    <input value={m.unit} onChange={e => updateRow(i, 'unit', e.target.value)}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-20">
                     <input type="number" min="0" step="0.01" value={m.unit_cost ?? 0}
@@ -218,29 +183,15 @@ function MaterialsTable({ materials, onChange }) {
                       className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:border-orange-400 bg-white" />
                   </td>
                   <td className="px-2 py-2 w-8">
-                    <button type="button" onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500 transition-colors">
+                    <button onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500 transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
-                )
-              })}
+              ))}
             </tbody>
           </table>
         </div>
-      )}
-
-      {materials.some(m => m.inventory_item_id) && (
-        <div className="px-3 py-2 bg-green-50 border-t border-green-100 text-[11px] text-green-700 flex items-center gap-1.5">
-          <Boxes className="w-3.5 h-3.5" /> {t('workOrder.inv.willDeduct')}
-        </div>
-      )}
-
-      {picking && (
-        <InventoryPicker
-          onSelect={addFromInventory}
-          onClose={() => setPicking(false)}
-        />
       )}
     </div>
   )
@@ -389,9 +340,7 @@ export default function RequestDetailPage() {
     try {
       const updated = await api.completeJob(job.id, {
         repair_details: completeForm.repair_details,
-        materials: completeForm.materials
-          .filter(m => m.name)
-          .map(m => ({ ...m, qty: parseFloat(m.qty) || 0, unit_cost: parseFloat(m.unit_cost) || 0 })),
+        materials: completeForm.materials.filter(m => m.name),
         ooo_room: completeForm.ooo_room,
         ooo_start_date: completeForm.ooo_room && completeForm.ooo_start_date ? completeForm.ooo_start_date : null,
         ooo_end_date: completeForm.ooo_room && completeForm.ooo_end_date ? completeForm.ooo_end_date : null,
