@@ -189,9 +189,9 @@ def list_completed_today(db: Session = Depends(get_db),
                       .subquery())
 
     q = db.query(MaintenanceRequest).filter(
+        MaintenanceRequest.status == "completed",
         or_(
-            and_(MaintenanceRequest.id.in_(wo_today_ids),
-                 MaintenanceRequest.status.in_(["pending_inspection", "completed"])),
+            MaintenanceRequest.id.in_(wo_today_ids),
             MaintenanceRequest.id.in_(insp_today_ids)
         )
     )
