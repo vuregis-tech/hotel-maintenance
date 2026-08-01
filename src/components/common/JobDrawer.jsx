@@ -234,6 +234,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     is_external: false, external_note: '', is_complete: false
   })
   const [repairImgUploading, setRepairImgUploading] = useState(false)
+  const repairImgEpoch = useRef(0) // กัน upload ค้างท่อจาก modal รอบก่อนมาแปะรูปใส่ฟอร์มรอบใหม่
   const [inspectForm, setInspectForm] = useState({ result: 'pass', notes: '' })
   const [inspectMedia, setInspectMedia] = useState([]) // [{file, preview, isVideo}]
   const [showInspectRecorder, setShowInspectRecorder] = useState(false)
@@ -278,6 +279,8 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       api.getTechWorkload().then(setTechWorkload).catch(() => {})
     }
     if (modal === 'complete') {
+      repairImgEpoch.current += 1
+      setRepairImgUploading(false)
       setCompleteForm({
         repair_details: '', materials: [], images: [], ooo_room: false,
         ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
@@ -353,14 +356,26 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   }
 
   async function handleRepairImgAdd(files) {
+    const epoch = repairImgEpoch.current
     setRepairImgUploading(true)
     try {
       for (const file of files) {
-        const res = await api.uploadRepairLogMedia(job.id, file)
-        setCompleteForm(f => ({ ...f, images: [...f.images, res.url] }))
+        const isVideo = file.type.startsWith('video/') || isVideoUrl(file.name)
+        if (isVideo && file.size > 100 * 1024 * 1024) {
+          toast.error(`วีดิโอ "${file.name}" ใหญ่เกินไป (สูงสุด 100MB)`)
+          continue
+        }
+        try {
+          const res = await api.uploadRepairLogMedia(job.id, file)
+          if (repairImgEpoch.current !== epoch) return // modal ถูกปิด/เปิดใหม่ระหว่างอัปโหลด
+          setCompleteForm(f => ({ ...f, images: [...f.images, res.url] }))
+        } catch (err) {
+          toast.error(`${file.name}: ${err.message}`)
+        }
       }
-    } catch (err) { toast.error(err.message) }
-    finally { setRepairImgUploading(false) }
+    } finally {
+      if (repairImgEpoch.current === epoch) setRepairImgUploading(false)
+    }
   }
 
   async function handleComplete() {
@@ -376,7 +391,11 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
     try {
       const updated = await api.completeJob(job.id, {
         repair_details: completeForm.repair_details,
-        materials: completeForm.materials.filter(m => m.name),
+        materials: completeForm.materials.filter(m => m.name).map(m => ({
+          ...m,
+          qty: m.qty === '' || m.qty == null ? 1 : Math.max(0, parseFloat(m.qty) || 0),
+          unit_cost: Math.max(0, parseFloat(m.unit_cost) || 0),
+        })),
         images: completeForm.images.length > 0 ? completeForm.images : null,
         ooo_room: completeForm.ooo_room,
         ooo_start_date: completeForm.ooo_room && completeForm.ooo_start_date ? completeForm.ooo_start_date : null,
@@ -853,7 +872,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                               {log.images?.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                   {log.images.map((url, i) => {
-                                    const isVid = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
+                                    const isVid = isVideoUrl(url)
                                     return isVid
                                       ? <video key={i} src={url} controls className="h-20 rounded-lg border border-gray-200 object-cover" />
                                       : <img key={i} src={url} alt="" onClick={() => window.open(url, '_blank')}
@@ -1035,17 +1054,21 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                     ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('workOrder.uploadingPhoto')}</>
                     : <><Plus className="w-3.5 h-3.5" /> {t('workOrder.addPhoto')}</>
                   }
-                  <input type="file" accept="image/*,video/*" multiple capture="environment"
+                  <input type="file" accept="image/*,video/*" multiple
                     className="hidden" disabled={repairImgUploading}
-                    onChange={e => e.target.files?.length && handleRepairImgAdd(Array.from(e.target.files))} />
+                    onChange={e => {
+                      const files = Array.from(e.target.files || [])
+                      e.target.value = ''
+                      if (files.length) handleRepairImgAdd(files)
+                    }} />
                 </label>
               </div>
               {completeForm.images.length === 0 ? (
-                <div className="px-3 py-3 text-xs text-blue-400 text-center">ยังไม่มีรูป — กด "เพิ่มรูป/วิดีโอ" เพื่อแนบ</div>
+                <div className="px-3 py-3 text-xs text-blue-400 text-center">{t('workOrder.noPhotos')}</div>
               ) : (
                 <div className="p-2 flex flex-wrap gap-2">
                   {completeForm.images.map((url, i) => {
-                    const isVid = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)
+                    const isVid = isVideoUrl(url)
                     return (
                       <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-blue-200 bg-white">
                         {isVid
@@ -1145,7 +1168,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">{t('common.cancel')}</button>
-            <button onClick={handleComplete} disabled={acting}
+            <button onClick={handleComplete} disabled={acting || repairImgUploading}
               className={`flex-1 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium ${
                 !completeForm.is_complete ? 'bg-blue-600 hover:bg-blue-700'
                 : completeForm.is_external ? 'bg-purple-600 hover:bg-purple-700'

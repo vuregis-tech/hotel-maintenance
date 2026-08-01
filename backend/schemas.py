@@ -123,9 +123,17 @@ class RequestImageOut(BaseModel):
 # ── Materials ─────────────────────────────────────────
 class MaterialItem(BaseModel):
     name: str
-    qty: float = 1
+    qty: float = Field(default=1, ge=0)
     unit: str = "ชิ้น"
     unit_cost: float = Field(default=0, ge=0)
+
+    @field_validator('qty', 'unit_cost', mode='before')
+    @classmethod
+    def blank_to_default(cls, v, info):
+        # input จาก browser อาจส่ง "" มาเมื่อ user เคลียร์ช่องตัวเลข
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return 1 if info.field_name == 'qty' else 0
+        return v
 
 
 # ── Co-Assignment ─────────────────────────────────────

@@ -14,6 +14,7 @@ from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, 
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
                        RejectBody, TransferBody)
 from ..auth import get_current_user, require_roles
+from ..timeutil import bangkok_now, bangkok_day_start_server_clock
 from ..services.storage import upload_image as storage_upload, upload_video as storage_upload_video
 from ..services.notification import notify_new_request, notify_status_change, notify_ooo
 
@@ -21,18 +22,9 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 UPLOAD_DIR = "uploads"
 
 
-def _bangkok_now():
-    """คืน datetime ในเวลา Bangkok (Asia/Bangkok, UTC+7) เพื่อ compare กับ shift times ที่ admin กรอกไว้"""
-    try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo('Asia/Bangkok'))
-    except Exception:
-        return datetime.utcnow() + timedelta(hours=7)
-
-
 def _is_on_shift_now(db, technician_id: int) -> bool:
     """ตรวจว่าช่างกำลัง on shift อยู่ตอนนี้ไหม (รองรับ shift ข้ามวัน)"""
-    now = _bangkok_now()
+    now = bangkok_now()
     today_str = now.strftime("%Y-%m-%d")
     yesterday_str = (now.date() - timedelta(days=1)).isoformat()
     current_time = now.strftime("%H:%M")
@@ -75,7 +67,7 @@ def _is_on_shift_now(db, technician_id: int) -> bool:
 
 
 def gen_request_number(db):
-    today = datetime.now().strftime("%Y%m%d")
+    today = bangkok_now().strftime("%Y%m%d")
     count = db.query(MaintenanceRequest).filter(
         MaintenanceRequest.request_number.like(f"MR{today}%")).count()
     return f"MR{today}{count + 1:03d}"
@@ -181,8 +173,8 @@ def location_history(
 @router.get("/completed-today", response_model=List[RequestOut])
 def list_completed_today(db: Session = Depends(get_db),
                          current_user: User = Depends(get_current_user)):
-    """งานที่เสร็จวันนี้: ช่างส่งตรวจวันนี้ หรือผ่านการตรวจวันนี้"""
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    """งานที่เสร็จวันนี้: ช่างส่งตรวจวันนี้ หรือผ่านการตรวจวันนี้ (วันตามปฏิทิน Bangkok)"""
+    today_start = bangkok_day_start_server_clock()
 
     # Tech submitted repair today
     wo_today_ids = (db.query(WorkOrder.request_id)
@@ -253,7 +245,7 @@ def create_request(data: RequestCreate, db: Session = Depends(get_db),
     result = get_req(db, req_id)
     # query supervisors + on-duty techs สำหรับ tag ในกลุ่ม Technician
     supervisors = db.query(User).filter(User.role == "supervisor", User.is_active == True).all()
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = bangkok_now().strftime("%Y-%m-%d")
     on_duty_users = (db.query(User)
                      .join(OnDutySchedule, OnDutySchedule.technician_id == User.id)
                      .filter(OnDutySchedule.duty_date == today_str).all())
@@ -661,6 +653,11 @@ def complete_work(job_id: int, data: WorkOrderComplete,
             [m.model_dump() for m in data.materials], ensure_ascii=False)
         total_cost = sum(m.qty * m.unit_cost for m in data.materials)
 
+    # รับเฉพาะ URL ที่มาจากระบบ upload ของเราเอง (กัน javascript:/data: injection)
+    if data.images:
+        for u in data.images:
+            if not (isinstance(u, str) and (u.startswith("https://") or u.startswith("/uploads/"))):
+                raise HTTPException(status_code=400, detail="URL รูปภาพไม่ถูกต้อง")
     images_json = json.dumps(data.images, ensure_ascii=False) if data.images else None
 
     # บันทึก repair log entry (ไม่ทับของเก่า)

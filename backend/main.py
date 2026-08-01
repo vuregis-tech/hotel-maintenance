@@ -246,12 +246,9 @@ async def check_sla_alerts():
     from .services.notification import notify_sla_breach
     db = SessionLocal()
     try:
+        from .timeutil import bangkok_now
         now = datetime.now(tz=_tz.utc)
-        try:
-            from zoneinfo import ZoneInfo as _ZI
-            now_local = datetime.now(_ZI('Asia/Bangkok'))
-        except Exception:
-            now_local = datetime.utcnow() + timedelta(hours=7)
+        now_local = bangkok_now()
         today_str = now_local.strftime("%Y-%m-%d")
         yesterday_str = (now_local.date() - timedelta(days=1)).strftime("%Y-%m-%d")
         current_time = now_local.strftime("%H:%M")

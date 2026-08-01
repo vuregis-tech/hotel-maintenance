@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import date
 from ..database import get_db
 from ..models import OnDutySchedule, User
 from ..schemas import OnDutyCreate, OnDutyOut
 from ..auth import get_current_user, require_roles
+from ..timeutil import bangkok_today_str
 
 router = APIRouter(prefix="/api/onduty", tags=["onduty"])
 
@@ -14,8 +14,8 @@ router = APIRouter(prefix="/api/onduty", tags=["onduty"])
 def list_onduty(duty_date: str = None,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
-    """ดึงรายชื่อช่าง On Duty — ถ้าไม่ระบุวัน จะใช้วันนี้"""
-    target = duty_date or date.today().isoformat()
+    """ดึงรายชื่อช่าง On Duty — ถ้าไม่ระบุวัน จะใช้วันนี้ (ปฏิทิน Bangkok)"""
+    target = duty_date or bangkok_today_str()
     return (db.query(OnDutySchedule)
             .filter(OnDutySchedule.duty_date == target)
             .all())
@@ -71,8 +71,8 @@ def remove_onduty(record_id: int,
 @router.get("/me/today")
 def am_i_on_duty(db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):
-    """ตรวจว่า user ปัจจุบัน On Duty วันนี้ไหม"""
-    today = date.today().isoformat()
+    """ตรวจว่า user ปัจจุบัน On Duty วันนี้ไหม (ปฏิทิน Bangkok)"""
+    today = bangkok_today_str()
     record = (db.query(OnDutySchedule)
               .filter(OnDutySchedule.technician_id == current_user.id,
                       OnDutySchedule.duty_date == today).first())

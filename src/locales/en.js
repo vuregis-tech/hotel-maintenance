@@ -212,6 +212,7 @@ export default {
     materialPhotos: 'Material Photos',
     addPhoto: 'Add Photo/Video',
     uploadingPhoto: 'Uploading...',
+    noPhotos: 'No photos yet — tap "Add Photo/Video" to attach',
     oooRoom: 'Close Room (Out of Order)',
     oooStart: 'Close Date',
     oooEnd: 'Reopen Date',

@@ -212,6 +212,7 @@ export default {
     materialPhotos: 'รูปวัสดุ/อะไหล่',
     addPhoto: 'เพิ่มรูป/วิดีโอ',
     uploadingPhoto: 'กำลังอัปโหลด...',
+    noPhotos: 'ยังไม่มีรูป — กด "เพิ่มรูป/วิดีโอ" เพื่อแนบ',
     oooRoom: 'ปิดห้อง Out of Order',
     oooStart: 'วันที่เริ่มปิด',
     oooEnd: 'วันที่เปิดคืน',

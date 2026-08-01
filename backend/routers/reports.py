@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models import MaintenanceRequest, WorkOrder, User, IssueType, RepairLog
 from ..schemas import ReportSummary
 from ..auth import require_roles
+from ..timeutil import bangkok_now
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -47,7 +48,7 @@ def get_summary(
             avg_hours = round(sum(hrs) / len(hrs), 1)
 
     req_ids = [r.id for r in all_reqs]
-    today_str = date.today().isoformat()
+    today_str = bangkok_now().strftime("%Y-%m-%d")
     if req_ids:
         ooo_ids = db.query(WorkOrder.request_id).filter(
             WorkOrder.request_id.in_(req_ids),
@@ -359,9 +360,9 @@ def get_materials_report(
     from collections import defaultdict
 
     if not date_from:
-        date_from = date.today()
+        date_from = bangkok_now().date()
     if not date_to:
-        date_to = date.today()
+        date_to = bangkok_now().date()
 
     q = (
         db.query(RepairLog)

@@ -327,11 +327,11 @@ def send_daily_summary():
         from ..models import MaintenanceRequest, WorkOrder
         db = SessionLocal()
         try:
-            from datetime import timezone as _tz
-            now_utc = datetime.now(tz=_tz.utc)
-            today = now_utc.date()
-            yesterday_start = datetime(today.year, today.month, today.day, tzinfo=_tz.utc) - timedelta(days=1)
-            yesterday_end = datetime(today.year, today.month, today.day, tzinfo=_tz.utc)
+            from ..timeutil import bangkok_now, bangkok_day_start_server_clock
+            # ขอบเขต "เมื่อวาน" ตามปฏิทิน Bangkok เทียบกับนาฬิกา server
+            yesterday_start = bangkok_day_start_server_clock(days_ago=1)
+            yesterday_end = bangkok_day_start_server_clock(days_ago=0)
+            today = bangkok_now().date()
             today_str = today.strftime('%Y-%m-%d')
 
             open_statuses = ['pending', 'assigned', 'in_progress', 'reopened', 'external_tech']

@@ -7,6 +7,7 @@ from ..database import get_db
 from ..models import Shift, ShiftAssignment, OnDutySchedule, User
 from ..schemas import ShiftOut, ShiftCreate, ShiftUpdate, ShiftAssignmentOut, ShiftAssignmentBulkCreate
 from ..auth import get_current_user, require_roles
+from ..timeutil import bangkok_now
 
 router = APIRouter(prefix="/api/shifts", tags=["shifts"])
 
@@ -153,11 +154,7 @@ def delete_assignment(assignment_id: int,
 def get_on_duty_now(db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
     """ช่างที่กำลัง On Shift ตอนนี้ — รองรับ Shift ข้ามวัน"""
-    try:
-        from zoneinfo import ZoneInfo
-        now = datetime.now(ZoneInfo('Asia/Bangkok'))
-    except Exception:
-        now = datetime.utcnow() + timedelta(hours=7)
+    now = bangkok_now()
     today_str = now.strftime("%Y-%m-%d")
     yesterday_str = (now.date() - timedelta(days=1)).isoformat()
     current_time = now.strftime("%H:%M")
