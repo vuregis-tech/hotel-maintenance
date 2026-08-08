@@ -121,12 +121,20 @@ export default function RequestsPage() {
     return over > 0 ? over : 0
   }
 
-  // Merge active departments from API + any extra dept names from loaded jobs (covers soft-deleted depts)
+  // Merge active departments from API + any extra dept names from loaded jobs
+  // (covers soft-deleted depts; includes both reporter and assigned-tech depts)
   const deptOptions = (() => {
     const apiNames = departments.map(d => d.name)
     const apiSet = new Set(apiNames)
-    const extra = [...new Set(jobs.map(j => j.reporter?.department).filter(Boolean))]
-      .filter(n => !apiSet.has(n))
+    const inJobs = jobs.flatMap(j => {
+      const wo = activeWorkOrder(j)
+      return [
+        j.reporter?.department,
+        wo?.technician?.department,
+        ...(wo?.co_assignments || []).map(c => c.technician?.department),
+      ]
+    }).filter(Boolean)
+    const extra = [...new Set(inJobs)].filter(n => !apiSet.has(n))
     return [...apiNames, ...extra]
   })()
 
@@ -136,8 +144,18 @@ export default function RequestsPage() {
       j.description?.toLowerCase().includes(lowerSearch) ||
       j.request_number?.toLowerCase().includes(lowerSearch) ||
       j.reporter?.full_name?.toLowerCase().includes(lowerSearch)
-    // Jobs with no reporter department always shown (cannot be categorised)
-    const matchDept = deptFilter.size === 0 || !j.reporter?.department || deptFilter.has(j.reporter.department)
+    // Dept filter matches both reporter's dept AND assigned technician's dept
+    // (jobs with no dept info at all always shown — cannot be categorised)
+    let matchDept = true
+    if (deptFilter.size > 0) {
+      const wo = activeWorkOrder(j)
+      const depts = [
+        j.reporter?.department,
+        wo?.technician?.department,
+        ...(wo?.co_assignments || []).map(c => c.technician?.department),
+      ].filter(Boolean)
+      matchDept = depts.length === 0 || depts.some(d => deptFilter.has(d))
+    }
     return matchSearch && matchDept
   })
 

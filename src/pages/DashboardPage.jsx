@@ -119,16 +119,37 @@ export default function DashboardPage() {
     })
   }
 
-  // Merge active API depts + soft-deleted dept names still present in job data
+  // Merge active API depts + dept names still present in job data (reporter + assigned techs)
   const deptOptions = (() => {
     const apiNames = departments.map(d => d.name)
     const apiSet = new Set(apiNames)
-    const extra = [...new Set(jobs.map(j => j.reporter?.department).filter(Boolean))].filter(n => !apiSet.has(n))
+    const inJobs = jobs.flatMap(j => {
+      const wo = activeWorkOrder(j)
+      return [
+        j.reporter?.department,
+        wo?.technician?.department,
+        ...(wo?.co_assignments || []).map(c => c.technician?.department),
+      ]
+    }).filter(Boolean)
+    const extra = [...new Set(inJobs)].filter(n => !apiSet.has(n))
     return [...apiNames, ...extra]
   })()
 
-  // Apply dept filter — jobs with no reporter dept always shown
-  const matchDept = j => deptFilter.size === 0 || !j.reporter?.department || deptFilter.has(j.reporter.department)
+  // Apply dept filter — match ทั้งแผนกผู้แจ้งและแผนกช่างที่รับงาน
+  // (งานที่ไม่มีข้อมูลแผนกเลยแสดงเสมอ — จัดหมวดไม่ได้)
+  const jobDepts = j => {
+    const wo = activeWorkOrder(j)
+    return [
+      j.reporter?.department,
+      wo?.technician?.department,
+      ...(wo?.co_assignments || []).map(c => c.technician?.department),
+    ].filter(Boolean)
+  }
+  const matchDept = j => {
+    if (deptFilter.size === 0) return true
+    const depts = jobDepts(j)
+    return depts.length === 0 || depts.some(d => deptFilter.has(d))
+  }
   const filteredJobs = jobs.filter(matchDept)
   const filteredToday = completedToday.filter(matchDept)
 
