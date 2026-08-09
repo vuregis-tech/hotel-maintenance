@@ -459,6 +459,9 @@ export default {
       completedTimes: 'Completed',
       pendingTimes: 'Pending',
       times: 'time(s)',
+      bySpot: 'By Spot',
+      byIssue: 'By Issue Type',
+      spots: 'spot(s)',
     },
     materials: {
       title: 'Consumables Usage Report',

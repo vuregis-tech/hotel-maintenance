@@ -267,6 +267,7 @@ def get_top_assets(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     top_n: int = 5,
+    group_by: str = "spot",   # "spot" = ประเภทงาน+สถานที่ (จุดเสียซ้ำ) | "issue" = รวมทั้งโรงแรมตามประเภทงาน
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "supervisor")),
 ):
@@ -288,11 +289,14 @@ def get_top_assets(
         elif r.other_location:
             location = r.other_location
 
-        key = (issue_name, location)
+        key = issue_name if group_by == "issue" else (issue_name, location)
         g = groups.setdefault(key, {
-            "issue": issue_name, "location": location,
+            "issue": issue_name,
+            "location": "" if group_by == "issue" else location,
+            "loc_set": set(),
             "total": 0, "completed": 0, "pending": 0, "jobs": [],
         })
+        g["loc_set"].add(location)
         g["total"] += 1
         if r.status == "completed":
             g["completed"] += 1
@@ -305,10 +309,12 @@ def get_top_assets(
             "description": r.description,
             "status": r.status,
             "is_urgent": r.is_urgent,
+            "location": location,
         })
 
     result = sorted(groups.values(), key=lambda g: g["total"], reverse=True)[:top_n]
     for g in result:
+        g["locations_count"] = len(g.pop("loc_set"))
         g["jobs"].sort(key=lambda j: j["reported_at"] or "", reverse=True)
     return result
 

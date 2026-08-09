@@ -459,6 +459,9 @@ export default {
       completedTimes: 'เสร็จแล้ว',
       pendingTimes: 'ค้างอยู่',
       times: 'ครั้ง',
+      bySpot: 'ตามจุด',
+      byIssue: 'ตามประเภทงานรวม',
+      spots: 'จุด',
     },
     materials: {
       title: 'รายงานการใช้วัสดุสิ้นเปลือง',

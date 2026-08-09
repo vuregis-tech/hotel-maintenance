@@ -572,13 +572,14 @@ function TopAssetsTab() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)         // index ของรายการที่กดขยาย
   const [selectedJobId, setSelectedJobId] = useState(null)
+  const [groupBy, setGroupBy] = useState('spot')         // 'spot' = ตามจุด | 'issue' = ตามประเภทงานรวม
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData(groupBy) }, [groupBy])
 
-  async function loadData() {
+  async function loadData(mode = groupBy) {
     setLoading(true)
     setExpanded(null)
-    const params = {}
+    const params = { group_by: mode }
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
     try { setData(await api.getTopAssets(params)) }
@@ -596,7 +597,19 @@ function TopAssetsTab() {
         onSearch={loadData} onClear={clear} />
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 mb-4">{t('reports.topAssets.title')}</h3>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h3 className="font-semibold text-gray-900">{t('reports.topAssets.title')}</h3>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            <button onClick={() => setGroupBy('spot')}
+              className={`px-3 py-1.5 transition-colors ${groupBy === 'spot' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              {t('reports.topAssets.bySpot')}
+            </button>
+            <button onClick={() => setGroupBy('issue')}
+              className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${groupBy === 'issue' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              {t('reports.topAssets.byIssue')}
+            </button>
+          </div>
+        </div>
         {loading ? (
           <div className="text-center text-gray-400 py-8 text-sm">{t('common.loading')}</div>
         ) : data.length === 0 ? (
@@ -613,7 +626,9 @@ function TopAssetsTab() {
                     }`}>{i + 1}</span>
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{item.issue}</p>
-                      {item.location && <p className="text-xs text-gray-400">{item.location}</p>}
+                      {groupBy === 'issue'
+                        ? <p className="text-xs text-gray-400">{item.locations_count} {t('reports.topAssets.spots')}</p>
+                        : item.location && <p className="text-xs text-gray-400">{item.location}</p>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -641,6 +656,9 @@ function TopAssetsTab() {
                         <tr>
                           <th className="text-left px-3 py-2 text-gray-500 font-medium whitespace-nowrap">{t('reports.col.no')}</th>
                           <th className="text-left px-3 py-2 text-gray-500 font-medium whitespace-nowrap">{t('reports.col.reportedAt')}</th>
+                          {groupBy === 'issue' && (
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium whitespace-nowrap">{t('reports.col.area')}</th>
+                          )}
                           <th className="text-left px-3 py-2 text-gray-500 font-medium">{t('reports.col.description')}</th>
                           <th className="text-left px-3 py-2 text-gray-500 font-medium">{t('reports.col.status')}</th>
                         </tr>
@@ -655,6 +673,9 @@ function TopAssetsTab() {
                             <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
                               {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
                             </td>
+                            {groupBy === 'issue' && (
+                              <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{job.location || '-'}</td>
+                            )}
                             <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{job.description}</td>
                             <td className="px-3 py-2"><StatusBadge status={job.status} /></td>
                           </tr>
