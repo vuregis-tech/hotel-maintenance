@@ -228,6 +228,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   const [acting, setActing] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [transferNote, setTransferNote] = useState('')
+  const [extForm, setExtForm] = useState({ note: '', next_date: '', mark_done: false })
   const [completeForm, setCompleteForm] = useState({
     repair_details: '', materials: [], images: [], ooo_room: false,
     ooo_start_date: '', ooo_end_date: '', ooo_notified_user_id: '',
@@ -409,6 +410,21 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
       if (!completeForm.is_complete) toast.success(t('workOrder.toast.savedProgress'))
       else if (completeForm.is_external) toast.success(t('workOrder.toast.externalLogged'))
       else toast.success(t('workOrder.toast.repairLogged'))
+    } catch (err) { toast.error(err.message) }
+    finally { setActing(false) }
+  }
+
+  async function handleExtFollowup() {
+    if (!extForm.note.trim()) return toast.error(t('workOrder.ext.noteRequired'))
+    setActing(true)
+    try {
+      const updated = await api.externalFollowup(job.id, {
+        note: extForm.note,
+        next_date: extForm.next_date || null,
+        mark_done: extForm.mark_done,
+      })
+      applyUpdate(updated); setModal(null)
+      toast.success(extForm.mark_done ? t('workOrder.ext.doneSuccess') : t('workOrder.ext.followupSuccess'))
     } catch (err) { toast.error(err.message) }
     finally { setActing(false) }
   }
@@ -595,6 +611,7 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
   const canReject   = job && isMyWO && job.status === 'assigned'
   const canTransfer = job && (isMyWO || isSuperAdmin) && ['assigned','in_progress'].includes(job.status)
   const canSelfAssign = job && user?.role === 'technician' && ['pending', 'reopened'].includes(job.status)
+  const canExtFollowup = job && isSuperAdmin && job.status === 'external_tech'
   const canEdit = job && (
     (job.status === 'pending') ||
     (job.status === 'assigned' && !wo?.accepted_at)
@@ -844,12 +861,26 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
                     <InfoRow label={t('workOrder.assignedByLabel')} value={wo.assigned_by?.full_name} />
                     <InfoRow label={t('workOrder.acceptedAtLabel')} value={wo.accepted_at ? format(new Date(wo.accepted_at), 'd MMM yyyy HH:mm', { locale: dateLocale }) : t('workOrder.notAccepted')} />
                     {wo.is_external && (
-                      <div className="flex gap-2 items-start p-3 bg-purple-50 rounded-lg">
-                        <ExternalLink className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="text-sm font-semibold text-purple-700">{t('workOrder.externalJobLabel')}</p>
-                          {wo.external_note && <p className="text-xs text-purple-600 mt-0.5">{wo.external_note}</p>}
+                      <div className="p-3 bg-purple-50 rounded-lg space-y-2">
+                        <div className="flex gap-2 items-start">
+                          <ExternalLink className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-purple-700">{t('workOrder.externalJobLabel')}</p>
+                            {wo.external_note && <p className="text-xs text-purple-600 mt-0.5">{wo.external_note}</p>}
+                          </div>
                         </div>
+                        {canExtFollowup && (
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={() => { setExtForm({ note: '', next_date: '', mark_done: false }); setModal('extFollowup') }}
+                              className="flex-1 flex items-center justify-center gap-1.5 border border-purple-400 text-purple-700 hover:bg-purple-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                              <History className="w-3.5 h-3.5" /> {t('workOrder.ext.followupBtn')}
+                            </button>
+                            <button onClick={() => { setExtForm({ note: '', next_date: '', mark_done: true }); setModal('extFollowup') }}
+                              className="flex-1 flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                              <CheckCircle className="w-3.5 h-3.5" /> {t('workOrder.ext.doneBtn')}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                     {wo.repair_logs && wo.repair_logs.length > 0 ? (
@@ -1352,6 +1383,37 @@ export default function JobDrawer({ jobId, onClose, onUpdate }) {
             }} disabled={acting}
               className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
               {acting ? t('common.saving') : t('workOrder.confirmRecall')}
+            </button>
+          </div>
+        </InnerModal>
+      )}
+
+      {modal === 'extFollowup' && (
+        <InnerModal title={extForm.mark_done ? t('workOrder.ext.doneModal') : t('workOrder.ext.followupModal')} onClose={() => setModal(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              {extForm.mark_done ? t('workOrder.ext.doneDesc') : t('workOrder.ext.followupDesc')}
+            </p>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">{t('workOrder.ext.noteLabel')} *</label>
+              <textarea value={extForm.note} onChange={e => setExtForm(f => ({ ...f, note: e.target.value }))}
+                rows={3} placeholder={t('workOrder.ext.notePlaceholder')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-400" />
+            </div>
+            {!extForm.mark_done && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">{t('workOrder.ext.nextDateLabel')}</label>
+                <input type="date" value={extForm.next_date}
+                  onChange={e => setExtForm(f => ({ ...f, next_date: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setModal(null)} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">{t('common.cancel')}</button>
+            <button onClick={handleExtFollowup} disabled={acting}
+              className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium">
+              {acting ? t('common.saving') : (extForm.mark_done ? t('workOrder.ext.confirmDone') : t('workOrder.ext.confirmFollowup'))}
             </button>
           </div>
         </InnerModal>

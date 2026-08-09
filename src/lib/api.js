@@ -212,4 +212,9 @@ export const api = {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString()
     return request('GET', `/api/reports/materials${qs ? `?${qs}` : ''}`)
   },
+  getAreaHistory: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
+    return request('GET', `/api/reports/area-history${qs ? `?${qs}` : ''}`)
+  },
+  externalFollowup: (id, data) => request('POST', `/api/jobs/${id}/external-followup`, data),
 }

@@ -188,6 +188,12 @@ class TransferBody(BaseModel):
     note: Optional[str] = None
 
 
+class ExternalFollowUpBody(BaseModel):
+    note: str = Field(max_length=2000)
+    next_date: Optional[str] = Field(default=None, pattern=r'^\d{4}-\d{2}-\d{2}$')  # YYYY-MM-DD
+    mark_done: bool = False           # True = งานช่างนอกเสร็จ → ส่งตรวจ
+
+
 class RepairLogOut(BaseModel):
     id: int
     repair_details: Optional[str] = None

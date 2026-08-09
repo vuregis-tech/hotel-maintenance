@@ -1,6 +1,6 @@
 import json
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import desc, or_
 from typing import Optional
 from datetime import datetime, date, timedelta
@@ -13,6 +13,15 @@ from ..auth import require_roles
 from ..timeutil import bangkok_now
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+
+def _latest_active_wo(r):
+    """WO ตัวล่าสุดที่ไม่ถูก reject/transfer/cancel — ตัวที่รับผิดชอบงานจริง"""
+    wos = sorted(r.work_orders, key=lambda w: w.id)
+    for w in reversed(wos):
+        if w.status not in ("rejected", "transferred", "cancelled"):
+            return w
+    return wos[-1] if wos else None
 
 
 def _date_filter(q, model, date_from, date_to):
@@ -195,15 +204,25 @@ def get_area_report(
         q = q.filter(MaintenanceRequest.sub_area_id == sub_area_id)
     if status:
         q = q.filter(MaintenanceRequest.status == status)
+    q = q.options(
+        joinedload(MaintenanceRequest.main_area),
+        joinedload(MaintenanceRequest.sub_area),
+        joinedload(MaintenanceRequest.issue_type),
+        joinedload(MaintenanceRequest.reporter),
+        selectinload(MaintenanceRequest.work_orders).joinedload(WorkOrder.technician),
+    )
     reqs = q.order_by(desc(MaintenanceRequest.created_at)).all()
 
     area_summary = {}
     for r in reqs:
-        key = (r.main_area_id, r.sub_area_id)
         main_name = r.main_area.name if r.main_area else "อื่นๆ"
         sub_name = r.sub_area.name if r.sub_area else (r.other_location or "-")
+        # งานที่ไม่มี sub_area แยกกลุ่มตามชื่อ other_location — ไม่ให้คนละที่ปนแถวเดียวกัน
+        key = (r.main_area_id, r.sub_area_id, sub_name if not r.sub_area_id else None)
         if key not in area_summary:
             area_summary[key] = {"main_area": main_name, "sub_area": sub_name,
+                                 "main_area_id": r.main_area_id, "sub_area_id": r.sub_area_id,
+                                 "other_location": r.other_location if not r.sub_area_id else None,
                                  "total": 0, "completed": 0, "pending": 0, "urgent": 0}
         area_summary[key]["total"] += 1
         if r.status == "completed":
@@ -217,6 +236,9 @@ def get_area_report(
         "summary": sorted(area_summary.values(), key=lambda x: x["total"], reverse=True),
         "requests": [
             {
+                "id": r.id,
+                "main_area_id": r.main_area_id,
+                "sub_area_id": r.sub_area_id,
                 "request_number": r.request_number,
                 "reported_at": r.reported_at.isoformat() if r.reported_at else None,
                 "main_area": r.main_area.name if r.main_area else "อื่นๆ",
@@ -226,8 +248,7 @@ def get_area_report(
                 "status": r.status,
                 "is_urgent": r.is_urgent,
                 "reporter": r.reporter.full_name if r.reporter else "-",
-                "technician": r.work_orders[0].technician.full_name
-                              if r.work_orders and r.work_orders[0].technician else "-",
+                "technician": (lambda w: w.technician.full_name if w and w.technician else "-")(_latest_active_wo(r)),
             }
             for r in reqs
         ],
@@ -246,11 +267,11 @@ def get_top_assets(
     q = _date_filter(db.query(MaintenanceRequest), MaintenanceRequest, date_from, date_to)
     reqs = q.all()
 
-    # นับตาม issue_type + location (sub_area)
-    asset_counter = Counter()
-    asset_meta = {}
-
+    # นับตาม issue_type + location (sub_area) — นับเสร็จ/ค้างต่อคู่ (issue, location) ไม่ใช่ต่อ issue อย่างเดียว
+    groups = {}
     for r in reqs:
+        if r.status == "cancelled":
+            continue  # งานยกเลิกไม่นับเป็นความถี่การเสีย
         issue_name = r.issue_type.name if r.issue_type else (r.other_issue or "ไม่ระบุ")
         location = ""
         if r.main_area:
@@ -260,28 +281,96 @@ def get_top_assets(
         elif r.other_location:
             location = r.other_location
 
-        key = f"{issue_name}||{location}"
-        asset_counter[key] += 1
-        if key not in asset_meta:
-            asset_meta[key] = {"issue": issue_name, "location": location}
-
-    top = asset_counter.most_common(top_n)
-    result = []
-    for key, count in top:
-        meta = asset_meta[key]
-        # หาจำนวนที่เสร็จและค้าง
-        completed = sum(1 for r in reqs
-                        if (r.issue_type.name if r.issue_type else (r.other_issue or "ไม่ระบุ")) == meta["issue"]
-                        and r.status == "completed")
-        result.append({
-            "issue": meta["issue"],
-            "location": meta["location"],
-            "total": count,
-            "completed": completed,
-            "pending": count - completed,
+        key = (issue_name, location)
+        g = groups.setdefault(key, {
+            "issue": issue_name, "location": location,
+            "total": 0, "completed": 0, "pending": 0, "jobs": [],
+        })
+        g["total"] += 1
+        if r.status == "completed":
+            g["completed"] += 1
+        else:
+            g["pending"] += 1
+        g["jobs"].append({
+            "id": r.id,
+            "request_number": r.request_number,
+            "reported_at": r.reported_at.isoformat() if r.reported_at else None,
+            "description": r.description,
+            "status": r.status,
+            "is_urgent": r.is_urgent,
         })
 
+    result = sorted(groups.values(), key=lambda g: g["total"], reverse=True)[:top_n]
+    for g in result:
+        g["jobs"].sort(key=lambda j: j["reported_at"] or "", reverse=True)
     return result
+
+
+@router.get("/area-history")
+def get_area_history(
+    main_area_id: Optional[int] = None,
+    sub_area_id: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin", "supervisor")),
+):
+    """ประวัติการซ่อมของพื้นที่ แยกตามประเภทงาน — jobs รวมรายละเอียดการซ่อมล่าสุด"""
+    if not main_area_id and not sub_area_id:
+        raise HTTPException(status_code=400, detail="กรุณาระบุพื้นที่")
+
+    q = _date_filter(db.query(MaintenanceRequest), MaintenanceRequest, date_from, date_to)
+    if main_area_id:
+        q = q.filter(MaintenanceRequest.main_area_id == main_area_id)
+    if sub_area_id:
+        q = q.filter(MaintenanceRequest.sub_area_id == sub_area_id)
+    q = q.options(
+        joinedload(MaintenanceRequest.issue_type),
+        joinedload(MaintenanceRequest.reporter),
+        selectinload(MaintenanceRequest.work_orders).joinedload(WorkOrder.technician),
+    )
+    reqs = q.order_by(desc(MaintenanceRequest.created_at)).all()
+
+    by_issue = {}
+    jobs = []
+    for r in reqs:
+        issue_name = r.issue_type.name if r.issue_type else (r.other_issue or "ไม่ระบุ")
+        b = by_issue.setdefault(issue_name, {
+            "issue": issue_name, "issue_type_id": r.issue_type_id,
+            "total": 0, "completed": 0,
+        })
+        b["total"] += 1
+        if r.status == "completed":
+            b["completed"] += 1
+
+        # ช่างจาก WO ล่าสุดที่ active / ข้อมูลการซ่อมจาก WO ล่าสุดที่มีการบันทึกซ่อมจริง
+        wo = _latest_active_wo(r)
+        technician = wo.technician.full_name if wo and wo.technician else None
+        repaired = next((w for w in sorted(r.work_orders, key=lambda w: w.id, reverse=True)
+                         if w.repair_details), None)
+        repair_details = repaired.repair_details if repaired else None
+        total_cost = repaired.total_cost if repaired else None
+        completed_at = repaired.completed_at if repaired else None
+
+        jobs.append({
+            "id": r.id,
+            "request_number": r.request_number,
+            "reported_at": r.reported_at.isoformat() if r.reported_at else None,
+            "issue": issue_name,
+            "description": r.description,
+            "status": r.status,
+            "is_urgent": r.is_urgent,
+            "reporter": r.reporter.full_name if r.reporter else "-",
+            "technician": technician or "-",
+            "repair_details": repair_details,
+            "total_cost": total_cost,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+        })
+
+    return {
+        "by_issue": sorted(by_issue.values(), key=lambda x: x["total"], reverse=True),
+        "jobs": jobs,
+    }
 
 
 @router.get("/staff-kpi")

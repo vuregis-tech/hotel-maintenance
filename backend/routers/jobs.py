@@ -12,7 +12,7 @@ from ..models import (MaintenanceRequest, RequestImage, WorkOrder, CoAssignment,
                       Shift, ShiftAssignment)
 from ..schemas import (RequestCreate, RequestEdit, RequestOut, WorkOrderCreate, WorkOrderComplete,
                        WorkOrderReassign, WorkOrderCoAssign, InspectionCreate, RecallBody,
-                       RejectBody, TransferBody)
+                       RejectBody, TransferBody, ExternalFollowUpBody)
 from ..auth import get_current_user, require_roles
 from ..timeutil import bangkok_now, bangkok_day_start_server_clock
 from ..services.storage import upload_image as storage_upload, upload_video as storage_upload_video
@@ -741,6 +741,58 @@ def complete_work(job_id: int, data: WorkOrderComplete,
                     if data.ooo_notified_user_id else None)
         notify_ooo(result, current_user, data.ooo_start_date, data.ooo_end_date, approver=approver)
     return result
+
+
+# ── External Follow-up ────────────────────────────────
+
+@router.post("/{job_id}/external-followup", response_model=RequestOut)
+def external_followup(job_id: int, data: ExternalFollowUpBody,
+                      db: Session = Depends(get_db),
+                      current_user: User = Depends(require_roles("admin", "supervisor"))):
+    """บันทึกการติดตามงานช่างภายนอก หรือปิดงานช่างนอก → ส่งตรวจ"""
+    req = get_req(db, job_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="ไม่พบงาน")
+    if req.status != "external_tech":
+        raise HTTPException(status_code=400, detail="งานไม่อยู่ในสถานะรอช่างภายนอก")
+    note = (data.note or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="กรุณากรอกบันทึกการติดตาม")
+
+    wo = (db.query(WorkOrder)
+          .filter(WorkOrder.request_id == job_id, WorkOrder.status == "external")
+          .order_by(desc(WorkOrder.id)).first())
+
+    if data.mark_done:
+        # งานช่างนอกเสร็จแล้ว → ปิด work order และส่งเข้าตรวจ
+        old_status = req.status
+        if wo:
+            wo.status = "completed"
+            wo.completed_at = datetime.now()
+            db.add(RepairLog(
+                work_order_id=wo.id,
+                repair_details=f"งานช่างภายนอกเสร็จสิ้น — {note}",
+                is_complete=True,
+                created_by_id=current_user.id,
+            ))
+        req.status = "pending_inspection"
+        add_history(db, job_id, old_status, "pending_inspection", current_user.id,
+                    f"งานช่างภายนอกเสร็จ: {note}")
+        db.commit()
+        result = get_req(db, job_id)
+        notify_status_change(result, old_status, "pending_inspection", current_user,
+                             f"งานช่างภายนอกเสร็จ: {note}",
+                             tag_user=result.reporter,
+                             title="🔍 <b>INSPECTION NEEDED</b>")  # 🔔
+        return result
+
+    # บันทึกติดตาม — เก็บลง history โดยไม่เปลี่ยนสถานะ
+    followup_note = f"ติดตามช่างภายนอก: {note}"
+    if data.next_date:
+        followup_note += f" (นัดติดตาม {data.next_date})"
+    add_history(db, job_id, "external_tech", "external_tech", current_user.id, followup_note)
+    db.commit()
+    return get_req(db, job_id)
 
 
 # ── Inspection ────────────────────────────────────────

@@ -5,7 +5,7 @@ import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, User, MapPin, BarChart2, Wrench, Trophy, DoorClosed, Package, Download } from 'lucide-react'
+import { ChevronDown, ChevronRight, User, MapPin, BarChart2, Wrench, Trophy, DoorClosed, Package, Download, History } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 function getDefaultDates() {
@@ -375,6 +375,8 @@ function AreaTab() {
   const [filterStatus, setFilterStatus] = useState('')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [areaSel, setAreaSel] = useState(null)          // แถวสรุปพื้นที่ที่เลือก (drill-down)
+  const [selectedJobId, setSelectedJobId] = useState(null)
 
   useEffect(() => { api.getAreas().then(setAreas); loadData() }, [])
 
@@ -386,6 +388,7 @@ function AreaTab() {
     if (selectedMain) params.main_area_id = selectedMain
     if (selectedSub) params.sub_area_id = selectedSub
     if (filterStatus) params.status = filterStatus
+    setAreaSel(null)
     try { setData(await api.getAreaReport(params)) }
     finally { setLoading(false) }
   }
@@ -398,6 +401,14 @@ function AreaTab() {
 
   const selectedMainArea = areas.find(a => a.id === Number(selectedMain))
   const subAreas = selectedMainArea?.sub_areas?.filter(s => s.is_active) || []
+
+  // Drill-down: กรองรายการงานตามแถวสรุปพื้นที่ที่เลือก
+  const filteredRequests = (data?.requests || []).filter(job =>
+    !areaSel ||
+    ((job.main_area_id ?? null) === (areaSel.main_area_id ?? null) &&
+     (job.sub_area_id ?? null) === (areaSel.sub_area_id ?? null) &&
+     (areaSel.sub_area_id != null || job.sub_area === areaSel.sub_area))
+  )
 
   const areaSummaryHeaders = [
     t('reports.col.mainArea'), t('reports.col.subArea'), t('reports.col.total'),
@@ -438,7 +449,7 @@ function AreaTab() {
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
             <option value="">{t('common.all')}</option>
-            {['pending','assigned','in_progress','pending_inspection','completed','reopened','cancelled'].map(s => (
+            {['pending','assigned','in_progress','external_tech','pending_inspection','completed','reopened','cancelled'].map(s => (
               <option key={s} value={s}>{t(`status.${s}`)}</option>
             ))}
           </select>
@@ -465,16 +476,31 @@ function AreaTab() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {data.summary.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-800">{row.main_area}</td>
-                        <td className="px-4 py-3 text-gray-600">{row.sub_area}</td>
-                        <td className="px-4 py-3 font-bold text-gray-900">{row.total}</td>
-                        <td className="px-4 py-3 text-green-600 font-medium">{row.completed}</td>
-                        <td className="px-4 py-3 text-yellow-600 font-medium">{row.pending}</td>
-                        <td className="px-4 py-3 text-center">{row.urgent > 0 ? <span className="text-red-500 font-bold">{row.urgent}</span> : '-'}</td>
-                      </tr>
-                    ))}
+                    {data.summary.map((row, i) => {
+                      const isSel = areaSel &&
+                        areaSel.main_area_id === row.main_area_id &&
+                        areaSel.sub_area_id === row.sub_area_id &&
+                        areaSel.sub_area === row.sub_area
+                      return (
+                        <tr key={i}
+                          onClick={() => setAreaSel(isSel ? null : {
+                            main_area_id: row.main_area_id, sub_area_id: row.sub_area_id, sub_area: row.sub_area,
+                          })}
+                          className={`cursor-pointer transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-blue-50/50'}`}>
+                          <td className="px-4 py-3 font-medium text-gray-800">
+                            <span className="flex items-center gap-1.5">
+                              {isSel ? <ChevronDown className="w-3.5 h-3.5 text-blue-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-300" />}
+                              {row.main_area}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">{row.sub_area}</td>
+                          <td className="px-4 py-3 font-bold text-gray-900">{row.total}</td>
+                          <td className="px-4 py-3 text-green-600 font-medium">{row.completed}</td>
+                          <td className="px-4 py-3 text-yellow-600 font-medium">{row.pending}</td>
+                          <td className="px-4 py-3 text-center">{row.urgent > 0 ? <span className="text-red-500 font-bold">{row.urgent}</span> : '-'}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -482,8 +508,14 @@ function AreaTab() {
           )}
 
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900">{t('reports.area.requests')} ({data.requests?.length || 0} {t('reports.items')})</h3>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900">{t('reports.area.requests')} ({filteredRequests.length} {t('reports.items')})</h3>
+              {areaSel && (
+                <button onClick={() => setAreaSel(null)}
+                  className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-medium hover:bg-blue-200">
+                  {areaSel.sub_area} ✕
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -495,10 +527,11 @@ function AreaTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {data.requests?.length === 0 ? (
+                  {filteredRequests.length === 0 ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
-                  ) : data.requests?.map((job, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
+                  ) : filteredRequests.map((job, i) => (
+                    <tr key={i} onClick={() => job.id && setSelectedJobId(job.id)}
+                      className="hover:bg-blue-50 cursor-pointer transition-colors">
                       <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">{job.request_number}</td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap text-gray-600">
                         {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
@@ -520,23 +553,31 @@ function AreaTab() {
           </div>
         </>
       )}
+
+      {selectedJobId && (
+        <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
+      )}
     </div>
   )
 }
 
 // ── Tab 4: Top Assets ─────────────────────────────────
 function TopAssetsTab() {
-  const { t } = useLang()
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
   const defaults = getDefaultDates()
   const [dateFrom, setDateFrom] = useState(defaults.from)
   const [dateTo, setDateTo] = useState(defaults.to)
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(null)         // index ของรายการที่กดขยาย
+  const [selectedJobId, setSelectedJobId] = useState(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
+    setExpanded(null)
     const params = {}
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
@@ -564,7 +605,8 @@ function TopAssetsTab() {
           <div className="space-y-4">
             {data.map((item, i) => (
               <div key={i} className="space-y-1">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between cursor-pointer rounded-lg -mx-2 px-2 py-1 hover:bg-blue-50 transition-colors"
+                  onClick={() => setExpanded(expanded === i ? null : i)}>
                   <div className="flex items-center gap-2">
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
                       i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-400' : 'bg-blue-300'
@@ -574,9 +616,14 @@ function TopAssetsTab() {
                       {item.location && <p className="text-xs text-gray-400">{item.location}</p>}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-gray-900">{item.total}</span>
-                    <span className="text-xs text-gray-400 ml-1">{t('reports.topAssets.times')}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <span className="text-lg font-bold text-gray-900">{item.total}</span>
+                      <span className="text-xs text-gray-400 ml-1">{t('reports.topAssets.times')}</span>
+                    </div>
+                    {expanded === i
+                      ? <ChevronDown className="w-4 h-4 text-blue-500" />
+                      : <ChevronRight className="w-4 h-4 text-gray-300" />}
                   </div>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -587,11 +634,44 @@ function TopAssetsTab() {
                   <span>{t('reports.topAssets.completedTimes')} {item.completed} {t('reports.topAssets.times')}</span>
                   <span>{t('reports.topAssets.pendingTimes')} {item.pending} {t('reports.topAssets.times')}</span>
                 </div>
+                {expanded === i && item.jobs?.length > 0 && (
+                  <div className="mt-2 border border-blue-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-blue-50 border-b border-blue-100">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium whitespace-nowrap">{t('reports.col.no')}</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium whitespace-nowrap">{t('reports.col.reportedAt')}</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">{t('reports.col.description')}</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">{t('reports.col.status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {item.jobs.map(job => (
+                          <tr key={job.id} onClick={() => setSelectedJobId(job.id)}
+                            className="bg-white hover:bg-blue-50 cursor-pointer transition-colors">
+                            <td className="px-3 py-2 font-mono text-gray-400 whitespace-nowrap">
+                              {job.request_number}{job.is_urgent && <span className="text-red-500 font-bold ml-1">!</span>}
+                            </td>
+                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                              {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{job.description}</td>
+                            <td className="px-3 py-2"><StatusBadge status={job.status} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {selectedJobId && (
+        <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
+      )}
     </div>
   )
 }
@@ -905,6 +985,154 @@ function ConsumablesTab() {
   )
 }
 
+// ── Tab 7: Area History ───────────────────────────────
+function AreaHistoryTab() {
+  const { lang, t } = useLang()
+  const dateLocale = lang === 'th' ? thLocale : enUS
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [areas, setAreas] = useState([])
+  const [selectedMain, setSelectedMain] = useState('')
+  const [selectedSub, setSelectedSub] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [issueSel, setIssueSel] = useState('')           // ประเภทงานที่กดกรอง ('' = ทั้งหมด)
+  const [selectedJobId, setSelectedJobId] = useState(null)
+
+  useEffect(() => { api.getAreas().then(setAreas) }, [])
+
+  async function loadData() {
+    if (!selectedMain) { setData(null); return }
+    setLoading(true)
+    setIssueSel('')
+    const params = { main_area_id: selectedMain }
+    if (selectedSub) params.sub_area_id = selectedSub
+    if (dateFrom) params.date_from = dateFrom
+    if (dateTo) params.date_to = dateTo
+    try { setData(await api.getAreaHistory(params)) }
+    finally { setLoading(false) }
+  }
+
+  function clear() {
+    setDateFrom(''); setDateTo('')
+    setSelectedMain(''); setSelectedSub('')
+    setIssueSel(''); setData(null)
+  }
+
+  const selectedMainArea = areas.find(a => a.id === Number(selectedMain))
+  const subAreas = selectedMainArea?.sub_areas?.filter(s => s.is_active) || []
+  const shownJobs = (data?.jobs || []).filter(j => !issueSel || j.issue === issueSel)
+
+  return (
+    <div className="space-y-4">
+      <DateFilter dateFrom={dateFrom} dateTo={dateTo}
+        onFromChange={setDateFrom} onToChange={setDateTo}
+        onSearch={loadData} onClear={clear}>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">{t('reports.area.filterMainArea')} *</label>
+          <select value={selectedMain}
+            onChange={e => {
+              setSelectedMain(e.target.value); setSelectedSub('')
+              if (!e.target.value) { setData(null); setIssueSel('') }
+            }}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <option value="">{t('reports.history.selectArea')}</option>
+            {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        {selectedMain && subAreas.length > 0 && (
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{t('reports.area.filterSubArea')}</label>
+            <select value={selectedSub} onChange={e => setSelectedSub(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">{t('common.all')}</option>
+              {subAreas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        )}
+      </DateFilter>
+
+      {!selectedMain && !data ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
+          {t('reports.history.selectAreaHint')}
+        </div>
+      ) : loading ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">{t('common.loading')}</div>
+      ) : !data ? null : (
+        <>
+          {/* สถิติแยกประเภทงาน — chips กดกรองได้ */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 mb-3">{t('reports.history.byIssue')}</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setIssueSel('')}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  !issueSel ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {t('common.all')} ({data.jobs.length})
+              </button>
+              {data.by_issue.map(b => (
+                <button key={b.issue} onClick={() => setIssueSel(issueSel === b.issue ? '' : b.issue)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    issueSel === b.issue ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>
+                  {b.issue} ({b.total})
+                  <span className={issueSel === b.issue ? 'text-blue-200' : 'text-green-600'}> ✓{b.completed}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* รายการงานพร้อมรายละเอียดการซ่อม */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">
+                {t('reports.history.title')} ({shownJobs.length} {t('reports.items')})
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {[t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.issueType'),
+                      t('reports.col.description'), t('reports.history.repairDetails'),
+                      t('reports.col.technician'), t('reports.col.status')].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {shownJobs.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
+                  ) : shownJobs.map(job => (
+                    <tr key={job.id} onClick={() => setSelectedJobId(job.id)}
+                      className="hover:bg-blue-50 cursor-pointer transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
+                        {job.request_number}{job.is_urgent && <span className="text-red-500 font-bold ml-1">!</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                        {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy', { locale: dateLocale }) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">{job.issue}</td>
+                      <td className="px-4 py-3 text-xs text-gray-700 max-w-[200px] truncate">{job.description}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[220px] truncate">{job.repair_details || '-'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">{job.technician}</td>
+                      <td className="px-4 py-3"><StatusBadge status={job.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {selectedJobId && (
+        <JobDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
+      )}
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────
 export default function ReportsPage() {
   const { t } = useLang()
@@ -917,6 +1145,7 @@ export default function ReportsPage() {
     { key: 'top_assets', label: t('reports.tabs.topAssets'), icon: Wrench },
     { key: 'staff_kpi', label: t('reports.tabs.staffKpi'), icon: Trophy },
     { key: 'materials', label: t('reports.tabs.materials'), icon: Package },
+    { key: 'area_history', label: t('reports.tabs.areaHistory'), icon: History },
   ]
 
   return (
@@ -941,6 +1170,7 @@ export default function ReportsPage() {
       {tab === 'top_assets' && <TopAssetsTab />}
       {tab === 'staff_kpi' && <StaffKpiTab />}
       {tab === 'materials' && <ConsumablesTab />}
+      {tab === 'area_history' && <AreaHistoryTab />}
     </div>
   )
 }
