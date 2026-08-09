@@ -2,13 +2,13 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import desc, or_
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, date, timedelta
 from collections import Counter
 
 from ..database import get_db
 from ..models import MaintenanceRequest, WorkOrder, User, IssueType, RepairLog
-from ..schemas import ReportSummary
+from ..schemas import ReportSummary, RequestOut
 from ..auth import require_roles
 from ..timeutil import bangkok_now
 
@@ -82,7 +82,7 @@ def get_summary(
     )
 
 
-@router.get("/list")
+@router.get("/list", response_model=List[RequestOut])
 def get_report_list(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
@@ -100,6 +100,13 @@ def get_report_list(
         q = q.filter(MaintenanceRequest.main_area_id == main_area_id)
     if sub_area_id:
         q = q.filter(MaintenanceRequest.sub_area_id == sub_area_id)
+    q = q.options(
+        joinedload(MaintenanceRequest.main_area),
+        joinedload(MaintenanceRequest.sub_area),
+        joinedload(MaintenanceRequest.issue_type),
+        joinedload(MaintenanceRequest.reporter),
+        selectinload(MaintenanceRequest.work_orders).joinedload(WorkOrder.technician),
+    )
     return q.order_by(desc(MaintenanceRequest.created_at)).offset(skip).limit(limit).all()
 
 
