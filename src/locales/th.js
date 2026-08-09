@@ -165,6 +165,8 @@ export default {
     confirmSubmit: 'ยืนยันการแจ้งซ่อม',
     validationDesc: 'กรุณาระบุรายละเอียดงานซ่อม',
     validationArea: 'กรุณาเลือกพื้นที่',
+    validationIssueType: 'กรุณาเลือกประเภทงาน',
+    validationOtherIssue: 'กรุณาระบุประเภทงาน',
     timeUnit: 'น.',
     nameLabel: 'ชื่อ',
     positionLabel: 'ตำแหน่ง',

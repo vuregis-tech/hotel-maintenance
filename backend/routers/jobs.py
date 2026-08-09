@@ -195,6 +195,9 @@ def get_request(job_id: int, db: Session = Depends(get_db),
 @router.post("", response_model=RequestOut)
 def create_request(data: RequestCreate, db: Session = Depends(get_db),
                    current_user: User = Depends(get_current_user)):
+    # บังคับระบุประเภทงาน — กันงาน "ไม่ระบุ" สะสมจนรายงานตามประเภทงานเพี้ยน
+    if not data.issue_type_id and not (data.other_issue or "").strip():
+        raise HTTPException(status_code=400, detail="กรุณาเลือกประเภทงาน")
     req = MaintenanceRequest(
         request_number=gen_request_number(db),
         reporter_id=current_user.id,

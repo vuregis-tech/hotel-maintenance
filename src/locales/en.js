@@ -165,6 +165,8 @@ export default {
     confirmSubmit: 'Submit Request',
     validationDesc: 'Please enter repair description',
     validationArea: 'Please select an area',
+    validationIssueType: 'Please select an issue type',
+    validationOtherIssue: 'Please specify the issue type',
     timeUnit: '',
     nameLabel: 'Name',
     positionLabel: 'Position',

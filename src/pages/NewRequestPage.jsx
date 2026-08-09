@@ -130,6 +130,8 @@ export default function NewRequestPage() {
     e.preventDefault()
     if (!form.description.trim()) return toast.error(t('request.validationDesc'))
     if (!isOtherArea && !form.main_area_id) return toast.error(t('request.validationArea'))
+    if (!form.issue_type_id) return toast.error(t('request.validationIssueType'))
+    if (form.issue_type_id === 'other' && !form.other_issue.trim()) return toast.error(t('request.validationOtherIssue'))
 
     setSubmitting(true)
     try {
@@ -252,7 +254,7 @@ export default function NewRequestPage() {
         <Section icon={Wrench} title={t('request.issueSection')}>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('request.issueTypeLabel')}</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('request.issueTypeLabel')} *</label>
               <select value={form.issue_type_id} onChange={e => set('issue_type_id', e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">{t('request.issueTypePlaceholder')}</option>
