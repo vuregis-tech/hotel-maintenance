@@ -111,27 +111,9 @@ def list_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # ทุก role มองเห็นงานทุกแผนกได้ (อ่านอย่างเดียว) — เพื่อให้ dept filter ใช้ดูข้ามแผนกได้
+    # สิทธิ์การกระทำ (assign/complete/inspect ฯลฯ) ยังถูกจำกัดที่ endpoint ของแต่ละ action
     q = db.query(MaintenanceRequest)
-    if current_user.role == "staff":
-        # เห็นงานทุกคนในแผนกเดียวกัน — ถ้าไม่มีแผนก (ถูก clear หลัง dept soft-delete) เห็นแค่งานตัวเอง
-        if current_user.department:
-            ReporterAlias = aliased(User)
-            q = (q.join(ReporterAlias, MaintenanceRequest.reporter_id == ReporterAlias.id)
-                   .filter(ReporterAlias.department == current_user.department))
-        else:
-            q = q.filter(MaintenanceRequest.reporter_id == current_user.id)
-    elif current_user.role == "technician":
-        assigned_ids = (db.query(WorkOrder.request_id)
-                        .filter(WorkOrder.technician_id == current_user.id).subquery())
-        co_ids = (db.query(CoAssignment.work_order_id)
-                  .filter(CoAssignment.technician_id == current_user.id).subquery())
-        co_req_ids = (db.query(WorkOrder.request_id)
-                      .filter(WorkOrder.id.in_(co_ids)).subquery())
-        q = q.filter(
-            (MaintenanceRequest.id.in_(assigned_ids)) |
-            (MaintenanceRequest.id.in_(co_req_ids)) |
-            (MaintenanceRequest.status == "pending")
-        )
     if status:
         q = q.filter(MaintenanceRequest.status == status)
     return q.order_by(desc(MaintenanceRequest.created_at)).offset(skip).limit(limit).all()
@@ -195,15 +177,7 @@ def list_completed_today(db: Session = Depends(get_db),
             MaintenanceRequest.id.in_(insp_today_ids)
         )
     )
-    if current_user.role == "technician":
-        assigned_ids = (db.query(WorkOrder.request_id)
-                        .filter(WorkOrder.technician_id == current_user.id).subquery())
-        q = q.filter(MaintenanceRequest.id.in_(assigned_ids))
-    elif current_user.role == "staff":
-        from sqlalchemy.orm import aliased as _aliased
-        RA = _aliased(User)
-        q = (q.join(RA, MaintenanceRequest.reporter_id == RA.id)
-               .filter(RA.department == current_user.department))
+    # ทุก role เห็น Done Today ทุกแผนก — สอดคล้องกับ list หลักและ dept filter
     return q.order_by(desc(MaintenanceRequest.created_at)).all()
 
 
