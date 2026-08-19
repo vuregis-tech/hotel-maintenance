@@ -106,6 +106,8 @@ def get_report_list(
         joinedload(MaintenanceRequest.issue_type),
         joinedload(MaintenanceRequest.reporter),
         selectinload(MaintenanceRequest.work_orders).joinedload(WorkOrder.technician),
+        # RequestOut serialize inspections ด้วย — ถ้าไม่ eager load จะยิง query ต่อ 1 งาน
+        selectinload(MaintenanceRequest.inspections),
     )
     return q.order_by(desc(MaintenanceRequest.created_at)).offset(skip).limit(limit).all()
 

@@ -5,6 +5,22 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate'
 // แล้วแทรก XML ตั้งค่าหน้ากระดาษเข้าไปเอง — paperSize 9 = A4
 const PAPER_A4 = 9
 
+// element ที่ schema กำหนดให้อยู่ "หลัง" pageSetup — ต้องแทรกก่อนตัวแรกที่เจอ
+const AFTER_PAGE_SETUP = [
+  '<headerFooter', '<rowBreaks', '<colBreaks', '<customProperties', '<cellWatches',
+  '<ignoredErrors', '<smartTags', '<drawing', '<legacyDrawing', '<picture',
+  '<oleObjects', '<controls', '<webPublishItems', '<tableParts', '<extLst',
+]
+
+function insertBefore(xml, fragment) {
+  let at = xml.lastIndexOf('</worksheet>')
+  for (const tag of AFTER_PAGE_SETUP) {
+    const i = xml.indexOf(tag)
+    if (i !== -1 && i < at) at = i
+  }
+  return xml.slice(0, at) + fragment + xml.slice(at)
+}
+
 /**
  * เขียนไฟล์ Excel พร้อมตั้งค่าพิมพ์ขนาด A4 แล้วสั่งดาวน์โหลด
  * opts: { orientation: 'portrait'|'landscape', fitToWidth: number, freezeRows: number }
@@ -38,15 +54,16 @@ export function writeXlsxA4(wb, filename, opts = {}) {
       }
     }
 
-    // ลำดับตาม schema: ... pageMargins → pageSetup → headerFooter
+    // ECMA-376 กำหนดลำดับ element ตายตัว: ... pageMargins → pageSetup → headerFooter
+    // → ignoredErrors → drawing ... ถ้าวางผิดลำดับ Excel จะฟ้องไฟล์เสียหายและทิ้งค่าที่ตั้งไว้
     const pageSetup = `<pageSetup paperSize="${PAPER_A4}" orientation="${orientation}"`
       + ` fitToWidth="${fitToWidth}" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>`
     if (xml.includes('<pageMargins')) {
+      // SheetJS เขียน pageMargins ให้แล้ว (เมื่อ caller ตั้ง ws['!margins']) — ต่อท้ายได้เลย
       xml = xml.replace(/(<pageMargins[^>]*\/>)/, `$1${pageSetup}`)
     } else {
-      xml = xml.replace(/<\/worksheet>/,
-        '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'
-        + `${pageSetup}</worksheet>`)
+      const margins = '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'
+      xml = insertBefore(xml, margins + pageSetup)
     }
     files[path] = strToU8(xml)
   }

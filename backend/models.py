@@ -102,8 +102,12 @@ class MaintenanceRequest(Base):
     sub_area = relationship("SubArea", back_populates="requests")
     issue_type = relationship("IssueType", back_populates="requests")
     images = relationship("RequestImage", back_populates="request", cascade="all, delete-orphan")
-    work_orders = relationship("WorkOrder", back_populates="request", cascade="all, delete-orphan")
-    inspections = relationship("Inspection", back_populates="request", cascade="all, delete-orphan")
+    # order_by ต้องระบุเสมอ — frontend หลายจุดถือว่าตัวท้าย array คือรายการล่าสุด
+    # ถ้าไม่ระบุ Postgres คืนลำดับตามใจ (heap scan) แล้วจะหยิบ WO/ผลตรวจผิดตัว
+    work_orders = relationship("WorkOrder", back_populates="request",
+                               order_by="WorkOrder.id", cascade="all, delete-orphan")
+    inspections = relationship("Inspection", back_populates="request",
+                               order_by="Inspection.id", cascade="all, delete-orphan")
     history = relationship("RequestHistory", back_populates="request", cascade="all, delete-orphan")
 
 

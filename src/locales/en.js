@@ -375,6 +375,7 @@ export default {
     repairReport: 'Repair Reports',
     exportExcelA4: 'Export Excel (A4)',
     sortHint: 'Click to sort',
+    truncated: '⚠ Truncated (max {n} rows) — narrow the date range',
     dateFrom: 'From Date',
     dateTo: 'To Date',
     search: 'Search',

@@ -33,6 +33,9 @@ function jobTechName(job) {
   return wo?.technician?.full_name || '-'
 }
 
+// เพดานจำนวนงานที่ดึงมาแสดง/ส่งออก — ถ้าชนเพดานจะเตือนผู้ใช้ให้แคบช่วงวันที่
+const LIST_LIMIT = 5000
+
 function getDefaultDates() {
   const today = new Date()
   const pad = (n) => String(n).padStart(2, '0')
@@ -117,7 +120,11 @@ function SummaryTab() {
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
     try {
-      const [s, l] = await Promise.all([api.getReportSummary(params), api.getReportList(params)])
+      // limit สูงพอให้ตารางและไฟล์ export ครบทุกงานในช่วงวันที่ (default ฝั่ง API คือ 200)
+      const [s, l] = await Promise.all([
+        api.getReportSummary(params),
+        api.getReportList({ ...params, limit: LIST_LIMIT }),
+      ])
       setSummary(s); setList(l)
     } finally { setLoading(false) }
   }
@@ -147,8 +154,9 @@ function SummaryTab() {
     { key: 'ooo',                label: t('reports.stats.ooo'),               value: summary.ooo_count,           color: 'bg-gray-100 text-gray-700',    activeColor: 'ring-gray-400' },
   ] : []
 
+  // กรองแผนกแบบตรงตัว — รายงานที่ระบุแผนกต้องมีเฉพาะงานของแผนกนั้นจริงๆ
   const filteredList = list.filter(j => {
-    const matchDept = !deptFilter || !j.reporter?.department || j.reporter.department === deptFilter
+    const matchDept = !deptFilter || j.reporter?.department === deptFilter
     return matchDept && (SUMMARY_FILTERS[activeFilter]?.match ?? (() => true))(j)
   })
 
@@ -193,9 +201,11 @@ function SummaryTab() {
       + (deptFilter ? ` · ${deptFilter}` : '')
       + ` · ${sortedList.length} ${t('reports.items')}`
 
+    // เขียนวันที่เป็น Date จริง (ไม่ใช่ข้อความ) เพื่อให้ Excel เรียง/กรองตามวันได้
+    const asDate = v => (v ? new Date(v) : '')
     const rows = sortedList.map(j => ({
       [t('reports.col.no')]:          j.request_number,
-      [t('reports.col.reportedAt')]:  fmtDT(j.reported_at),
+      [t('reports.col.reportedAt')]:  asDate(j.reported_at),
       [t('reports.col.area')]:        jobAreaText(j, t('common.other')),
       [t('reports.col.reporter')]:    j.reporter?.full_name || '-',
       [t('request.filterDept')]:      j.reporter?.department || '-',
@@ -203,21 +213,29 @@ function SummaryTab() {
       [t('reports.col.description')]: j.description || '',
       [t('reports.col.technician')]:  jobTechName(j),
       [t('reports.col.status')]:      t(`status.${j.status}`),
-      [t('reports.col.completedAt')]: fmtDT(jobCompletedAt(j)),
+      [t('reports.col.completedAt')]: asDate(jobCompletedAt(j)),
       [t('reports.col.urgent')]:      j.is_urgent ? '!' : '',
     }))
 
     const ws = XLSX.utils.aoa_to_sheet([[title], [subtitle]])
-    XLSX.utils.sheet_add_json(ws, rows, { origin: 'A3' })
+    XLSX.utils.sheet_add_json(ws, rows, { origin: 'A3', cellDates: true })
+    // ใส่รูปแบบวันที่ให้คอลัมน์ B (วันที่แจ้ง) และ J (เสร็จเมื่อ)
+    for (let i = 0; i < rows.length; i++) {
+      for (const c of ['B', 'J']) {
+        const cell = ws[`${c}${i + 4}`]
+        if (cell?.t === 'd') cell.z = 'dd/mm/yyyy hh:mm'
+      }
+    }
     ws['!cols'] = [
-      { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 18 }, { wch: 16 },
-      { wch: 16 }, { wch: 38 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 6 },
+      { wch: 16 }, { wch: 18 }, { wch: 26 }, { wch: 18 }, { wch: 16 },
+      { wch: 16 }, { wch: 38 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 6 },
     ]
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
     ]
     ws['!autofilter'] = { ref: `A3:K${rows.length + 3}` }
+    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
@@ -277,6 +295,11 @@ function SummaryTab() {
               {SUMMARY_FILTERS[activeFilter]?.label || t('reports.stats.all')}
             </h2>
             <span className="text-sm text-gray-400">({sortedList.length} {t('reports.items')})</span>
+            {list.length >= LIST_LIMIT && (
+              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                {t('reports.truncated').replace('{n}', LIST_LIMIT)}
+              </span>
+            )}
             <button onClick={exportExcel} disabled={sortedList.length === 0}
               className="ml-auto flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
               <Download className="w-3.5 h-3.5" /> {t('reports.exportExcelA4')}

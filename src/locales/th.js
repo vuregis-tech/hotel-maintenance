@@ -375,6 +375,7 @@ export default {
     repairReport: 'รายงานการซ่อม',
     exportExcelA4: 'Export Excel (A4)',
     sortHint: 'คลิกเพื่อเรียงลำดับ',
+    truncated: '⚠ แสดงไม่ครบ (สูงสุด {n} รายการ) — กรุณาแคบช่วงวันที่',
     dateFrom: 'จากวันที่',
     dateTo: 'ถึงวันที่',
     search: 'ค้นหา',
