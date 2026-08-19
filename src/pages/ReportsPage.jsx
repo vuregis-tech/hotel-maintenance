@@ -1,12 +1,37 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, activeWorkOrder } from '../lib/api'
+import { writeXlsxA4 } from '../lib/excelA4'
 import { useLang } from '../context/LangContext'
 import StatusBadge from '../components/common/StatusBadge'
 import JobDrawer from '../components/common/JobDrawer'
 import { format } from 'date-fns'
 import { th as thLocale, enUS } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, User, MapPin, BarChart2, Wrench, Trophy, DoorClosed, Package, Download, History } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, User, MapPin, BarChart2, Wrench, Trophy, DoorClosed, Package, Download, History } from 'lucide-react'
 import * as XLSX from 'xlsx'
+
+// เวลาที่งานเสร็จจริง = ตรวจผ่านครั้งล่าสุด (fallback: WO ที่ปิดล่าสุด)
+// เลือกจากค่าเวลาที่มากที่สุด ไม่พึ่งลำดับใน array เพราะ relationship ฝั่ง backend ไม่ได้ order_by
+function latestOf(list, field) {
+  return (list || []).reduce((max, x) => (x?.[field] && (!max || x[field] > max) ? x[field] : max), null)
+}
+
+export function jobCompletedAt(job) {
+  if (job?.status !== 'completed') return null
+  const passed = (job.inspections || []).filter(i => i.result === 'pass')
+  return latestOf(passed, 'created_at') || latestOf(job.work_orders, 'completed_at')
+}
+
+function jobAreaText(job, otherLabel) {
+  const main = job.main_area?.name || otherLabel
+  const sub = job.sub_area ? ` › ${job.sub_area.name}` : ''
+  const other = job.other_location ? ` (${job.other_location})` : ''
+  return `${main}${sub}${other}`
+}
+
+function jobTechName(job) {
+  const wo = activeWorkOrder(job)
+  return wo?.technician?.full_name || '-'
+}
 
 function getDefaultDates() {
   const today = new Date()
@@ -59,6 +84,7 @@ function SummaryTab() {
   const [selectedJobId, setSelectedJobId] = useState(null)
   const [departments, setDepartments] = useState([])
   const [deptFilter, setDeptFilter] = useState('')
+  const [sort, setSort] = useState({ key: 'reported_at', dir: 'desc' })
 
   const SUMMARY_FILTERS = {
     all:                { label: t('reports.stats.all'),              match: () => true },
@@ -126,10 +152,82 @@ function SummaryTab() {
     return matchDept && (SUMMARY_FILTERS[activeFilter]?.match ?? (() => true))(j)
   })
 
-  const colHeaders = [
-    t('reports.col.no'), t('reports.col.reportedAt'), t('reports.col.area'),
-    t('reports.col.reporter'), t('reports.col.issueType'), t('reports.col.status'), t('reports.col.urgent'),
+  // นิยามคอลัมน์ + ตัวดึงค่าไว้ใช้ทั้ง sorting และ export
+  const columns = [
+    { key: 'request_number', label: t('reports.col.no'),          get: j => j.request_number || '' },
+    { key: 'reported_at',    label: t('reports.col.reportedAt'),  get: j => j.reported_at || '' },
+    { key: 'area',           label: t('reports.col.area'),        get: j => jobAreaText(j, t('common.other')) },
+    { key: 'reporter',       label: t('reports.col.reporter'),    get: j => j.reporter?.full_name || '' },
+    { key: 'issue',          label: t('reports.col.issueType'),   get: j => j.issue_type?.name || j.other_issue || '' },
+    { key: 'status',         label: t('reports.col.status'),      get: j => t(`status.${j.status}`) },
+    { key: 'completed_at',   label: t('reports.col.completedAt'), get: j => jobCompletedAt(j) || '' },
+    { key: 'urgent',         label: t('reports.col.urgent'),      get: j => (j.is_urgent ? 1 : 0) },
   ]
+
+  function toggleSort(key) {
+    setSort(s => s.key === key
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: key === 'reported_at' || key === 'completed_at' ? 'desc' : 'asc' })
+  }
+
+  const sortCol = columns.find(c => c.key === sort.key) || columns[1]
+  const sortedList = [...filteredList].sort((a, b) => {
+    const va = sortCol.get(a), vb = sortCol.get(b)
+    let r
+    if (typeof va === 'number' && typeof vb === 'number') r = va - vb
+    // ค่าว่าง (เช่นงานที่ยังไม่เสร็จ) ให้ไปท้ายเสมอ ไม่ว่าจะเรียงทางไหน
+    else if (!va && vb) return 1
+    else if (va && !vb) return -1
+    else r = String(va).localeCompare(String(vb), lang === 'th' ? 'th' : 'en', { numeric: true })
+    return sort.dir === 'asc' ? r : -r
+  })
+
+  const fmtDT = v => v ? format(new Date(v), 'dd/MM/yyyy HH:mm', { locale: dateLocale }) : '-'
+
+  function exportExcel() {
+    if (!sortedList.length) return
+    const title = t('reports.repairReport')
+    const sheetName = 'Repair Report'
+    const filterLabel = SUMMARY_FILTERS[activeFilter]?.label || t('reports.stats.all')
+    const subtitle = `${filterLabel} · ${dateFrom} — ${dateTo}`
+      + (deptFilter ? ` · ${deptFilter}` : '')
+      + ` · ${sortedList.length} ${t('reports.items')}`
+
+    const rows = sortedList.map(j => ({
+      [t('reports.col.no')]:          j.request_number,
+      [t('reports.col.reportedAt')]:  fmtDT(j.reported_at),
+      [t('reports.col.area')]:        jobAreaText(j, t('common.other')),
+      [t('reports.col.reporter')]:    j.reporter?.full_name || '-',
+      [t('request.filterDept')]:      j.reporter?.department || '-',
+      [t('reports.col.issueType')]:   j.issue_type?.name || j.other_issue || '-',
+      [t('reports.col.description')]: j.description || '',
+      [t('reports.col.technician')]:  jobTechName(j),
+      [t('reports.col.status')]:      t(`status.${j.status}`),
+      [t('reports.col.completedAt')]: fmtDT(jobCompletedAt(j)),
+      [t('reports.col.urgent')]:      j.is_urgent ? '!' : '',
+    }))
+
+    const ws = XLSX.utils.aoa_to_sheet([[title], [subtitle]])
+    XLSX.utils.sheet_add_json(ws, rows, { origin: 'A3' })
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 18 }, { wch: 16 },
+      { wch: 16 }, { wch: 38 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 6 },
+    ]
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
+    ]
+    ws['!autofilter'] = { ref: `A3:K${rows.length + 3}` }
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    // ให้แถวหัวตารางซ้ำทุกหน้าเวลาพิมพ์
+    wb.Workbook = { Names: [{ Name: '_xlnm.Print_Titles', Ref: `'${sheetName}'!$3:$3`, Sheet: 0 }] }
+    writeXlsxA4(wb, `repair-report_${dateFrom}_${dateTo}.xlsx`, {
+      orientation: 'landscape',
+      freezeRows: 3,
+    })
+  }
 
   return (
     <>
@@ -174,41 +272,64 @@ function SummaryTab() {
         )}
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
             <h2 className="font-semibold text-gray-900">
               {SUMMARY_FILTERS[activeFilter]?.label || t('reports.stats.all')}
             </h2>
-            <span className="text-sm text-gray-400">({filteredList.length} {t('reports.items')})</span>
+            <span className="text-sm text-gray-400">({sortedList.length} {t('reports.items')})</span>
+            <button onClick={exportExcel} disabled={sortedList.length === 0}
+              className="ml-auto flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+              <Download className="w-3.5 h-3.5" /> {t('reports.exportExcelA4')}
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {colHeaders.map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
+                  {columns.map(c => (
+                    <th key={c.key} onClick={() => toggleSort(c.key)}
+                      title={t('reports.sortHint')}
+                      className="text-left px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition-colors">
+                      <span className="inline-flex items-center gap-1">
+                        {c.label}
+                        {sort.key === c.key
+                          ? (sort.dir === 'asc'
+                              ? <ChevronUp className="w-3.5 h-3.5 text-blue-600" />
+                              : <ChevronDown className="w-3.5 h-3.5 text-blue-600" />)
+                          : <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('common.loading')}</td></tr>
-                ) : filteredList.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
-                ) : filteredList.map(job => (
-                  <tr key={job.id} className="hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => setSelectedJobId(job.id)}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">{job.request_number}</td>
-                    <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
-                      {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {job.main_area?.name || t('common.other')}{job.sub_area ? ` › ${job.sub_area.name}` : ''}{job.other_location ? ` (${job.other_location})` : ''}
-                    </td>
-                    <td className="px-4 py-3 text-xs">{job.reporter?.full_name}<br/><span className="text-gray-400">{job.reporter?.department}</span></td>
-                    <td className="px-4 py-3 text-xs">{job.issue_type?.name || job.other_issue || '-'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={job.status} /></td>
-                    <td className="px-4 py-3 text-center text-sm">{job.is_urgent ? <span className="text-red-500 font-bold">!</span> : '-'}</td>
-                  </tr>
-                ))}
+                  <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-gray-400">{t('common.loading')}</td></tr>
+                ) : sortedList.length === 0 ? (
+                  <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-gray-400">{t('reports.noFound')}</td></tr>
+                ) : sortedList.map(job => {
+                  const doneAt = jobCompletedAt(job)
+                  return (
+                    <tr key={job.id} className="hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => setSelectedJobId(job.id)}>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">{job.request_number}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                        {job.reported_at ? format(new Date(job.reported_at), 'd MMM yy HH:mm', { locale: dateLocale }) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {jobAreaText(job, t('common.other'))}
+                      </td>
+                      <td className="px-4 py-3 text-xs">{job.reporter?.full_name}<br/><span className="text-gray-400">{job.reporter?.department}</span></td>
+                      <td className="px-4 py-3 text-xs">{job.issue_type?.name || job.other_issue || '-'}</td>
+                      <td className="px-4 py-3"><StatusBadge status={job.status} /></td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {doneAt
+                          ? <span className="text-green-600 font-medium">{format(new Date(doneAt), 'd MMM yy HH:mm', { locale: dateLocale })}</span>
+                          : <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm">{job.is_urgent ? <span className="text-red-500 font-bold">!</span> : '-'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

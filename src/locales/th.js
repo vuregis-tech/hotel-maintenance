@@ -373,6 +373,8 @@ export default {
   reports: {
     title: 'รายงาน',
     repairReport: 'รายงานการซ่อม',
+    exportExcelA4: 'Export Excel (A4)',
+    sortHint: 'คลิกเพื่อเรียงลำดับ',
     dateFrom: 'จากวันที่',
     dateTo: 'ถึงวันที่',
     search: 'ค้นหา',
